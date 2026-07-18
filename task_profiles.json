@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "generated_by": "calibrate_budgets.py",
+  "last_calibrated": null,
+  "_comment": "Written by calibrate_budgets.py only. The dominant lever here is `thinking`, not `max_tokens`: with thinking enabled the model spends completion tokens on reasoning before producing any answer, so a small budget can return an empty reply.",
+  "profiles": {
+    "classify": {
+      "thinking": "disabled",
+      "reasoning_effort": null,
+      "max_tokens": 64,
+      "observed_p95": null,
+      "sample_count": 0,
+      "last_calibrated": null,
+      "notes": "routing, yes/no, label selection"
+    },
+    "extract": {
+      "thinking": "disabled",
+      "reasoning_effort": null,
+      "max_tokens": 512,
+      "observed_p95": null,
+      "sample_count": 0,
+      "last_calibrated": null,
+      "notes": "pull structured fields out of text; JSON output"
+    },
+    "summarize": {
+      "thinking": "disabled",
+      "reasoning_effort": null,
+      "max_tokens": 1024,
+      "observed_p95": null,
+      "sample_count": 0,
+      "last_calibrated": null,
+      "notes": "condense a document"
+    },
+    "analyze": {
+      "thinking": "enabled",
+      "reasoning_effort": "high",
+      "max_tokens": 4096,
+      "observed_p95": null,
+      "sample_count": 0,
+      "last_calibrated": null,
+      "notes": "judgement calls needing reasoning headroom"
+    },
+    "deep": {
+      "thinking": "enabled",
+      "reasoning_effort": "max",
+      "max_tokens": 16384,
+      "observed_p95": null,
+      "sample_count": 0,
+      "last_calibrated": null,
+      "notes": "hard multi-step problems"
+    }
+  }
+}

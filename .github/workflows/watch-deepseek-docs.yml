@@ -1,0 +1,68 @@
+name: Watch DeepSeek docs
+
+# Monthly, not weekly: DeepSeek changed models ~5 times in 11 months and gives
+# ~90 days' deprecation notice, so weekly polling would be >90% no-op runs -- and
+# no-op automation is how the one alert that matters gets rubber-stamped.
+#
+# This job needs NO API key. Pricing and deprecation notices live on public pages;
+# only GET /models requires auth, and this job deliberately skips it. That is why
+# there is no `secrets:` reference anywhere below.
+#
+# It is a SENSOR, not a mutator: it never writes models.json. Without /models it
+# cannot verify availability, so it must not re-resolve tiers or commit partial
+# data. It opens an issue and leaves the authoritative refresh to a local run.
+
+on:
+  schedule:
+    - cron: "0 6 1 * *" # 1st of each month, 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Compare public docs against models.json
+        id: check
+        run: |
+          # exit 2 means "something changed" -- expected, not a build failure,
+          # so capture the code instead of letting `set -e` abort the job.
+          python update_models.py --docs-only --check > report.txt 2>&1 || code=$?
+          code=${code:-0}
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          cat report.txt
+
+      - name: Open or update tracking issue
+        if: steps.check.outputs.code == '2'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="DeepSeek docs changed - run update_models.py"
+          body="$(printf '%s\n\n```\n%s\n```\n\n%s\n' \
+            "The monthly docs check found changes in DeepSeek's public documentation." \
+            "$(cat report.txt)" \
+            "Run \`py update_models.py\` locally to refresh models.json, then commit it.")"
+
+          # Comment on the existing issue rather than opening a duplicate each month.
+          existing="$(gh issue list --state open --limit 50 --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[0].number // empty")"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "commented on issue #$existing"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Report clean run
+        if: steps.check.outputs.code == '0'
+        run: echo "No material changes in the DeepSeek docs."

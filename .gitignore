@@ -17,3 +17,10 @@ Desktop.ini
 .DS_Store
 .vscode/
 .idea/
+
+# Local run artefacts
+# usage_log.jsonl is per-machine measurement data, not shared state.
+usage_log.jsonl
+*.tmp
+# Downloaded by fetch_tokenizer.py; several MB, reproducible on demand.
+tokenizer/
