@@ -232,18 +232,44 @@ def _find_date(sentence):
     return None
 
 
+# How far before/after a retirement word we look for the model being retired.
+DEPRECATION_LOOKBEHIND = 160
+DEPRECATION_LOOKAHEAD = 200
+
+
 def scrape_deprecations(text, model_ids):
-    """-> {model_id: date_str_or_None} for models named alongside retirement wording."""
+    """-> {model_id: date_str} for models a notice actually retires.
+
+    Two rules keep this conservative, because deprecation is *sticky* -- a false
+    positive would permanently disqualify a live model from tier selection, while
+    a false negative merely means finding out later (and /models still catches an
+    actual removal):
+
+    1. The id must appear shortly BEFORE the retirement word, i.e. be its subject.
+       "deepseek-chat ... will be deprecated ... they correspond to deepseek-v4-flash"
+       retires deepseek-chat; deepseek-v4-flash is the replacement, not the victim.
+       Matching anything in the same sentence wrongly flags the replacement too.
+    2. A parseable date is required. A retirement word near a model id with no
+       date attached is far more likely to be prose than an actual notice.
+    """
     found = {}
-    for sentence in re.split(r"(?<=[.!?])\s+", text):
-        if not DEPRECATION_WORDS.search(sentence):
+    for match in DEPRECATION_WORDS.finditer(text):
+        before = text[max(0, match.start() - DEPRECATION_LOOKBEHIND):match.start()]
+        # Trim to the current sentence. Without this, an adjacent sentence such as
+        # "V4 ships as deepseek-v4-pro and deepseek-v4-flash. The legacy names
+        # ... will be discontinued" leaks the new models into the lookbehind and
+        # retires the very models that were just launched.
+        boundary = max(before.rfind(". "), before.rfind("! "), before.rfind("? "))
+        if boundary != -1:
+            before = before[boundary + 1:]
+
+        after = text[match.end():match.end() + DEPRECATION_LOOKAHEAD]
+        date = _find_date(before + " " + after)
+        if not date:
             continue
-        date = _find_date(sentence)
         for mid in model_ids:
-            if mid in sentence:
-                # Prefer a sentence that actually carries a date.
-                if mid not in found or (found[mid] is None and date):
-                    found[mid] = date
+            if mid in before:
+                found.setdefault(mid, date)
     return found
 
 
@@ -647,6 +673,10 @@ def parse_args():
                         help="promote quarantined models that pass every gate")
     parser.add_argument("--pin", metavar="TIER=MODEL", action="append", default=[])
     parser.add_argument("--unpin", metavar="TIER", action="append", default=[])
+    parser.add_argument("--clear-deprecation", metavar="MODEL", action="append",
+                        default=[],
+                        help="undo a deprecation flag set in error; it is sticky "
+                             "otherwise and would survive every later run")
     return parser.parse_args()
 
 
@@ -672,6 +702,15 @@ def main():
         if tier in config.get("tiers", {}):
             config["tiers"][tier]["pin"] = None
             print(f"unpinned {tier}")
+
+    for mid in args.clear_deprecation:
+        info = config["models"].get(mid)
+        if not info:
+            print(f"cannot clear deprecation: {mid!r} is not in the config")
+            return 2
+        info["deprecated"] = False
+        info["deprecation_date"] = None
+        print(f"cleared deprecation flag on {mid}")
 
     print("1) availability  (GET /models)")
     availability_ok = False if args.docs_only else step_availability(
