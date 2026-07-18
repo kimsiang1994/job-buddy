@@ -659,6 +659,37 @@ def run_docs_check(config, verbose):
 # cli
 # --------------------------------------------------------------------------
 
+def run_docs_debug():
+    """Dump exactly what the scrapers see. Diagnoses CI-vs-local differences,
+    which are real: the docs CDN can serve different content by region."""
+    for name, url in (("pricing", PRICING_URL), ("updates", UPDATES_URL)):
+        print(f"\n=== {name}: {url} ===")
+        try:
+            raw = common.fetch_text(url)
+        except Exception as err:                  # noqa: BLE001
+            print(f"  FETCH FAILED: {err}")
+            continue
+        text = flatten_html(raw)
+        print(f"  raw {len(raw)} bytes -> flattened {len(text)} chars")
+        mentioned = sorted(set(re.findall(r"deepseek-[a-z0-9.\-]+", text)))
+        print(f"  model ids mentioned: {mentioned}")
+        hits = list(DEPRECATION_WORDS.finditer(text))
+        print(f"  retirement-word hits: {len(hits)}")
+        for match in hits:
+            before = text[max(0, match.start() - DEPRECATION_LOOKBEHIND):match.start()]
+            boundary = max(before.rfind(". "), before.rfind("! "), before.rfind("? "))
+            trimmed = before[boundary + 1:] if boundary != -1 else before
+            after = text[match.end():match.end() + DEPRECATION_LOOKAHEAD]
+            print(f"\n    word={match.group(0)!r} @ {match.start()}"
+                  f"  sentence_boundary_found={boundary != -1}")
+            print(f"    before(trimmed) = {trimmed[-220:]!r}")
+            print(f"    after           = {after[:140]!r}")
+            print(f"    date            = {_find_date(trimmed + ' ' + after)}")
+            print(f"    ids in before   = "
+                  f"{[m for m in mentioned if m in trimmed]}")
+    return 0
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -667,6 +698,8 @@ def parse_args():
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--docs-only", action="store_true",
                         help="skip the authenticated /models call (no key needed)")
+    parser.add_argument("--debug-docs", action="store_true",
+                        help="dump what the scrapers see, then exit")
     parser.add_argument("--check", action="store_true",
                         help="report differences and exit; never write")
     parser.add_argument("--accept-new-generation", action="store_true",
@@ -683,6 +716,8 @@ def parse_args():
 def main():
     common.enable_utf8_stdout()
     args = parse_args()
+    if args.debug_docs:
+        return run_docs_debug()
     warnings = []
     config = load_config(warnings)
     before = json.dumps(config, indent=2, ensure_ascii=False)
