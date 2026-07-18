@@ -72,6 +72,21 @@ so a missing or corrupt `models.json` cannot take the app down.
 
 Exit codes: `0` clean · `1` a source failed · `2` action needed.
 
+Useful flags: `--dry-run` (print the diff, write nothing), `--pin fast=MODEL`,
+`--unpin fast`, `--accept-new-generation`, `--debug-docs` (dump what the scrapers
+see), and `--clear-deprecation MODEL` — the escape hatch for a false positive,
+since the flag is sticky and would otherwise survive every later run.
+
+### Testing the scrapers
+
+    py test_scrapers.py     # offline, no key, no cost
+
+DeepSeek serves its docs with **different markup in different regions**, so a
+scraper that passes locally can still fail in CI — that happened twice here. Every
+fixture in `test_scrapers.py` is real text that actually broke the parser, so add
+to that file rather than rewriting it when the docs change shape again. The
+workflow runs these tests before it compares anything against the live docs.
+
 ## Token budgeting
 
 ```python
@@ -160,7 +175,8 @@ than 30 days stale.
 | `deepseek_client.py` | the call path: resolve → call → log → retry |
 | `calibrate_budgets.py` | retunes profiles from logged usage |
 | `fetch_tokenizer.py` | downloads the optional official tokenizer |
-| `test_deepseek.py` | end-to-end key + inference check |
+| `test_deepseek.py` | end-to-end key + inference check (needs a key) |
+| `test_scrapers.py` | offline regression tests for the docs scrapers |
 
 Each config file has exactly one writer, so two scripts can never clobber the
 same file.

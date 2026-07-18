@@ -1,28 +1,28 @@
 {
   "schema_version": 1,
   "generated_by": "update_models.py",
-  "last_checked": "2026-07-18T07:44:06Z",
+  "last_checked": "2026-07-18T07:51:15Z",
   "sources": {
     "models_api": {
       "url": "https://api.deepseek.com/models",
-      "last_attempt": "2026-07-18T07:44:05Z",
-      "last_success": "2026-07-18T07:44:05Z",
+      "last_attempt": "2026-07-18T07:51:13Z",
+      "last_success": "2026-07-18T07:51:13Z",
       "consecutive_failures": 0,
       "last_error": null,
       "model_count": 2
     },
     "pricing_docs": {
       "url": "https://api-docs.deepseek.com/quick_start/pricing",
-      "last_attempt": "2026-07-18T07:44:06Z",
-      "last_success": "2026-07-18T07:44:06Z",
+      "last_attempt": "2026-07-18T07:51:14Z",
+      "last_success": "2026-07-18T07:51:14Z",
       "consecutive_failures": 0,
       "last_error": null,
       "rows_parsed": 2
     },
     "changelog_docs": {
       "url": "https://api-docs.deepseek.com/updates",
-      "last_attempt": "2026-07-18T07:44:06Z",
-      "last_success": "2026-07-18T07:44:06Z",
+      "last_attempt": "2026-07-18T07:51:15Z",
+      "last_success": "2026-07-18T07:51:15Z",
       "consecutive_failures": 0,
       "last_error": null,
       "notices_parsed": 2
@@ -47,11 +47,11 @@
       "provenance": {
         "availability": {
           "source": "models_api",
-          "at": "2026-07-18T07:44:05Z"
+          "at": "2026-07-18T07:51:13Z"
         },
         "pricing": {
           "source": "pricing_docs",
-          "at": "2026-07-18T07:44:06Z"
+          "at": "2026-07-18T07:51:14Z"
         }
       }
     },
@@ -73,11 +73,11 @@
       "provenance": {
         "availability": {
           "source": "models_api",
-          "at": "2026-07-18T07:44:05Z"
+          "at": "2026-07-18T07:51:13Z"
         },
         "pricing": {
           "source": "pricing_docs",
-          "at": "2026-07-18T07:44:06Z"
+          "at": "2026-07-18T07:51:14Z"
         }
       }
     },
@@ -93,11 +93,11 @@
       "provenance": {
         "availability": {
           "source": "models_api",
-          "at": "2026-07-18T07:44:05Z"
+          "at": "2026-07-18T07:51:13Z"
         },
         "deprecation": {
           "source": "changelog_docs",
-          "at": "2026-07-18T07:44:06Z"
+          "at": "2026-07-18T07:51:15Z"
         }
       }
     },
@@ -113,11 +113,11 @@
       "provenance": {
         "availability": {
           "source": "models_api",
-          "at": "2026-07-18T07:44:05Z"
+          "at": "2026-07-18T07:51:13Z"
         },
         "deprecation": {
           "source": "changelog_docs",
-          "at": "2026-07-18T07:44:06Z"
+          "at": "2026-07-18T07:51:15Z"
         }
       }
     }
@@ -128,14 +128,14 @@
       "pin": null,
       "chosen_by": "auto",
       "reason": "lowest input price in generation 4",
-      "decided_at": "2026-07-18T07:44:06Z"
+      "decided_at": "2026-07-18T07:51:15Z"
     },
     "quality": {
       "model": "deepseek-v4-pro",
       "pin": null,
       "chosen_by": "auto",
       "reason": "highest input price in generation 4",
-      "decided_at": "2026-07-18T07:44:06Z"
+      "decided_at": "2026-07-18T07:51:15Z"
     }
   },
   "pending": {},
