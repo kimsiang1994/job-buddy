@@ -36,6 +36,11 @@ jobs:
         with:
           python-version: "3.13"
 
+      # Offline and free. Catches parser regressions before they can raise a
+      # false alarm against the live docs.
+      - name: Scraper regression tests
+        run: python test_scrapers.py
+
       - name: Docs diagnostics
         if: inputs.debug
         run: python update_models.py --debug-docs

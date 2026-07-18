@@ -237,28 +237,73 @@ DEPRECATION_LOOKBEHIND = 160
 DEPRECATION_LOOKAHEAD = 200
 
 
+# The gap between the retired model and the retirement word must read like a verb
+# phrase: " will be ", " (to be ", " , will be ". Anything with real content means
+# the nearby id is not the subject.
+VERB_GAP_RE = re.compile(
+    r"^[\s,;:()\-]*"
+    r"(?:\b(?:and|or|will|shall|may|might|to|are|is|be|been|being|soon|now|both|"
+    r"also|the|model|models|name|names)\b[\s,;:()\-]*)*$", re.I)
+
+# Ids chain only across an EXPLICIT conjunction. Whitespace alone does not chain:
+# "deepseek-v4-flash deepseek-v4-pro deepseek-chat" is a LIST of separate models,
+# whereas "deepseek-chat and deepseek-reasoner" is genuinely one subject.
+CHAIN_RE = re.compile(r"^\s*(?:,|;|and|or|&|,\s*and)\s*$", re.I)
+
+
+def _attributed_ids(before, model_ids):
+    """Which ids a retirement word actually applies to.
+
+    The nearest id preceding the word, plus any joined to it by an explicit
+    conjunction. Returns [] when the preceding text does not read like a subject.
+    """
+    spans = []
+    for mid in model_ids:
+        for match in re.finditer(re.escape(mid), before):
+            spans.append((match.start(), match.end(), mid))
+    if not spans:
+        return []
+    spans.sort()
+    # Drop any span fully contained in another (one id being a prefix of another).
+    trimmed = []
+    for span in spans:
+        if not any(o[0] <= span[0] and span[1] <= o[1] and o is not span
+                   for o in spans):
+            trimmed.append(span)
+    spans = trimmed
+
+    if not VERB_GAP_RE.match(before[spans[-1][1]:]):
+        return []
+
+    chosen = [spans[-1][2]]
+    for index in range(len(spans) - 1, 0, -1):
+        if not CHAIN_RE.match(before[spans[index - 1][1]:spans[index][0]]):
+            break
+        chosen.append(spans[index - 1][2])
+    return chosen
+
+
 def scrape_deprecations(text, model_ids):
     """-> {model_id: date_str} for models a notice actually retires.
 
-    Two rules keep this conservative, because deprecation is *sticky* -- a false
-    positive would permanently disqualify a live model from tier selection, while
-    a false negative merely means finding out later (and /models still catches an
-    actual removal):
+    Deliberately conservative, because deprecation is *sticky*: a false positive
+    would permanently disqualify a live model from tier selection, while a false
+    negative merely means finding out later (and /models still catches an actual
+    removal). Three rules:
 
-    1. The id must appear shortly BEFORE the retirement word, i.e. be its subject.
-       "deepseek-chat ... will be deprecated ... they correspond to deepseek-v4-flash"
-       retires deepseek-chat; deepseek-v4-flash is the replacement, not the victim.
-       Matching anything in the same sentence wrongly flags the replacement too.
-    2. A parseable date is required. A retirement word near a model id with no
-       date attached is far more likely to be prose than an actual notice.
+    1. The id must PRECEDE the retirement word -- it is the subject. In
+       "deepseek-chat ... deprecated ... they correspond to deepseek-v4-flash",
+       v4-flash is the replacement, not the victim.
+    2. Only the nearest id counts, unless others are chained by an explicit
+       conjunction. The docs also render deprecations as a list --
+       "deepseek-v4-flash deepseek-v4-pro deepseek-chat (to be deprecated ...)"
+       -- where a plain proximity window would retire the two live models too.
+    3. A parseable date is required; a retirement word with no date attached is
+       far more likely to be prose than an actual notice.
     """
     found = {}
     for match in DEPRECATION_WORDS.finditer(text):
         before = text[max(0, match.start() - DEPRECATION_LOOKBEHIND):match.start()]
-        # Trim to the current sentence. Without this, an adjacent sentence such as
-        # "V4 ships as deepseek-v4-pro and deepseek-v4-flash. The legacy names
-        # ... will be discontinued" leaks the new models into the lookbehind and
-        # retires the very models that were just launched.
         boundary = max(before.rfind(". "), before.rfind("! "), before.rfind("? "))
         if boundary != -1:
             before = before[boundary + 1:]
@@ -267,9 +312,8 @@ def scrape_deprecations(text, model_ids):
         date = _find_date(before + " " + after)
         if not date:
             continue
-        for mid in model_ids:
-            if mid in before:
-                found.setdefault(mid, date)
+        for mid in _attributed_ids(before, model_ids):
+            found.setdefault(mid, date)
     return found
 
 
