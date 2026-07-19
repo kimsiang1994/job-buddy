@@ -102,7 +102,8 @@ def to_job(record: dict[str, Any]) -> dict[str, Any] | None:
     # where the skill terms live; losing it would gut the skill match.
     extra = " ".join(str(record.get(k) or "") for k in
                      ("requirementsSection", "benefitsSection"))
-    job["jd_text"] = job_schema.norm_text(html_text.flatten_html(html + " " + extra))
+    job["jd_text"] = job_schema.norm_jd_text(
+        "\n".join([html_text.flatten_html(html), html_text.flatten_html(extra)]))
 
     job["location"], job["is_overseas"] = _location(record)
 

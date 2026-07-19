@@ -198,10 +198,10 @@ def to_job(record: dict[str, Any]) -> dict[str, Any] | None:
     html = record.get("description")
     job["jd_html"] = html if isinstance(html, str) else None
     try:
-        job["jd_text"] = job_schema.norm_text(html_text.flatten_html(html or ""))
+        job["jd_text"] = job_schema.norm_jd_text(html_text.flatten_html(html or ""))
     except Exception as exc:  # a malformed JD must not kill the record
         net._warn(f"mcf: could not flatten description for {uuid} ({exc})")
-        job["jd_text"] = job_schema.norm_text(html or "")
+        job["jd_text"] = job_schema.norm_jd_text(html or "")
 
     job["location"] = _location(record)
     job["is_overseas"] = not is_singapore(record)

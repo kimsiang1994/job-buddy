@@ -97,6 +97,22 @@ def norm_text(value: Any) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def norm_jd_text(value: Any) -> str:
+    """Normalise a job description while keeping its line structure.
+
+    `norm_text` collapses every run of whitespace, which is right for a title
+    and wrong for a description: it welds `Nice to have` onto the end of the
+    previous sentence, and the skill extractor then reads every optional skill
+    as mandatory. Spaces collapse, line breaks survive.
+    """
+    if value is None:
+        return ""
+    text = unicodedata.normalize("NFKC", str(value))
+    text = re.sub(r"[ \t ]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n", text)
+    return "\n".join(line.strip() for line in text.split("\n")).strip()
+
+
 def norm_title(title: Any) -> str:
     """Lowercase a job title and strip the decoration boards add.
 

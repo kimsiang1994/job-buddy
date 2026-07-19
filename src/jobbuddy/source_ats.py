@@ -391,7 +391,7 @@ def to_job(record: dict[str, Any], vendor: str, company: str,
     if isinstance(html, dict):
         html = json.dumps(html)
     job["jd_html"] = html or None
-    job["jd_text"] = job_schema.norm_text(html_text.flatten_html(str(html)))
+    job["jd_text"] = job_schema.norm_jd_text(html_text.flatten_html(str(html)))
 
     location = _text_of(_first(record, "location", "locations", "offices",
                                "locationsText", "city", default=""))

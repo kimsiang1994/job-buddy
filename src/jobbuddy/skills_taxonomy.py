@@ -68,7 +68,16 @@ _ALIAS_GROUPS: dict[str, tuple[str, ...]] = {
     "etl": ("etl pipeline", "etl pipelines", "extract transform load",
             "data pipeline", "data pipelines", "elt"),
     "data warehousing": ("data warehouse", "dwh", "data warehouse design"),
-    "data engineering": ("data engineer",),
+    "data engineering": ("data engineer", "data pipelines", "pipelines"),
+    # Added after the frequency filter removed these as "too common". They are
+    # common because this field genuinely wants them, not because they are
+    # filler -- and once a real skill leaves the vocabulary, a job asking for it
+    # stops counting as a match the candidate actually has.
+    "data science": ("data scientist", "data analytics", "analytics"),
+    "security": ("application security", "secure coding", "infosec",
+                 "security engineering"),
+    "scalability": ("scalable systems", "distributed systems", "high availability"),
+    "system design": ("architecture", "solution architecture", "technical design"),
     "data governance": ("governance", "data quality", "data compliance",
                         "data stewardship"),
     "statistics": ("statistical analysis", "statistical modelling",

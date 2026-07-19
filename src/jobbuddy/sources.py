@@ -147,6 +147,27 @@ def fetch_all(
                 job["_source_adapter"] = name
             jobs.extend(found)
 
+    # Sources that publish structured skills pay for the ones that do not.
+    # MCF tags every posting; Workable, the ATS boards and HN tag none, so 71%
+    # of a live run scored nothing on skill match -- the heaviest component --
+    # while carrying thousands of characters of description nobody read.
+    # Harvest first so this run's vocabulary is available to this run's prose.
+    from jobbuddy import skill_extract
+
+    harvested = skill_extract.harvest(jobs)
+    if harvested:
+        skill_extract.reload_vocab()
+        counters.setdefault("_vocab", {})["new_terms"] = harvested
+
+    enriched = 0
+    for job in jobs:
+        if not job.get("skills_raw"):
+            skill_extract.enrich(job)
+            if job.get("skills_raw"):
+                enriched += 1
+    if enriched:
+        counters.setdefault("_vocab", {})["jobs_enriched"] = enriched
+
     return jobs, counters
 
 

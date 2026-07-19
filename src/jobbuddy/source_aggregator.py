@@ -107,7 +107,7 @@ def _jsearch_to_job(record: dict[str, Any]) -> dict[str, Any] | None:
 
     description = record.get("job_description") or ""
     job["jd_html"] = None
-    job["jd_text"] = job_schema.norm_text(html_text.flatten_html(description))
+    job["jd_text"] = job_schema.norm_jd_text(html_text.flatten_html(description))
 
     city = job_schema.norm_text(record.get("job_city"))
     country = job_schema.norm_text(record.get("job_country"))
@@ -180,7 +180,7 @@ def _adzuna_to_job(record: dict[str, Any]) -> dict[str, Any] | None:
     job["company"] = job_schema.norm_text((record.get("company") or {}).get("display_name"))
     job["url"] = job_schema.norm_text(record.get("redirect_url"))
     job["is_agency"] = job_schema.looks_like_agency(job["company"])
-    job["jd_text"] = job_schema.norm_text(html_text.flatten_html(record.get("description") or ""))
+    job["jd_text"] = job_schema.norm_jd_text(html_text.flatten_html(record.get("description") or ""))
     job["location"] = job_schema.norm_text(
         (record.get("location") or {}).get("display_name")) or "Singapore"
     job["is_overseas"] = "singapore" not in job["location"].lower()

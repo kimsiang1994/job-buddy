@@ -337,3 +337,116 @@ class FetcherTiers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class SkillExtraction(unittest.TestCase):
+    """Reading skills out of prose, for the sources that publish none.
+
+    Before this existed, 71% of jobs on a live run scored nothing on skill
+    match -- the heaviest component at weight 30 -- while carrying thousands of
+    characters of description nobody read.
+    """
+
+    JD = ("Build production ML systems.\n"
+          "REQUIREMENTS\n"
+          "Python\n"
+          "AWS\n"
+          "NICE TO HAVE\n"
+          "Kubernetes\n"
+          "BENEFITS\n"
+          "Free lunch and a LangChain t-shirt\n")
+
+    def setUp(self):
+        from jobbuddy import skill_extract
+
+        self.sx = skill_extract
+        self.vocab = {"Python": 5, "AWS": 5, "Kubernetes": 5, "LangChain": 5}
+
+    def _extract(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "vocab.json"
+            self.sx.save_vocab(self.vocab, path)
+            self.sx.reload_vocab()
+            try:
+                return self.sx.extract(self.JD, path=path)
+            finally:
+                self.sx.reload_vocab()
+
+    def test_required_and_optional_are_distinguished(self):
+        """An optional Kubernetes must not weigh as much as a mandatory Python."""
+        found = {s.term: s.required for s in self._extract()}
+        self.assertTrue(found.get("Python"))
+        self.assertTrue(found.get("AWS"))
+        self.assertFalse(found.get("Kubernetes", True))
+
+    def test_skills_under_benefits_are_ignored(self):
+        """'LangChain t-shirt' is not a requirement."""
+        self.assertNotIn("LangChain", {s.term for s in self._extract()})
+
+    def test_structured_skills_are_never_overwritten(self):
+        """MCF's own tags beat anything read out of prose."""
+        job = {"skills_raw": ["Machine Learning"], "jd_text": self.JD}
+        self.sx.enrich(job)
+        self.assertEqual(job["skills_raw"], ["Machine Learning"])
+
+    def test_document_frequency_uses_word_boundaries(self):
+        """Substring counting scored POS at 69% -- it matches inside 'position'.
+
+        Every short term was inflated the same way, and the filter then removed
+        real skills on the strength of numbers that measured nothing.
+        """
+        pattern = self.sx._boundary_pattern("POS")
+        self.assertIsNone(pattern.search("this position requires"))
+        self.assertIsNotNone(pattern.search("experience with POS systems"))
+
+    def test_known_skills_survive_the_frequency_filter(self):
+        """Python appeared in 73% of ads and was being discarded as filler.
+
+        The most important skills in a field are the most common ones in that
+        field's job ads, so frequency alone is the wrong test.
+        """
+        record = {"terms": {"Python": 100}, "doc_freq": {"Python": 99},
+                  "documents": 100}
+        self.assertTrue(self.sx.is_discriminative("Python", record))
+
+    def test_unknown_filler_is_filtered(self):
+        record = {"terms": {"Fast-paced": 50}, "doc_freq": {"Fast-paced": 45},
+                  "documents": 100}
+        self.assertFalse(self.sx.is_discriminative("Fast-paced", record))
+
+    def test_filter_stays_off_on_a_small_corpus(self):
+        record = {"terms": {"Whatever": 3}, "doc_freq": {"Whatever": 3},
+                  "documents": 4}
+        self.assertTrue(self.sx.is_discriminative("Whatever", record))
+
+
+class HtmlStructurePreserved(unittest.TestCase):
+    """Flattening a description to one line destroys its sections.
+
+    `<h3>Nice to have</h3>` is what separates a demand from a wish, and
+    collapsing it inline made every extracted skill read as mandatory.
+    """
+
+    def test_block_tags_become_line_breaks(self):
+        from jobbuddy import html_text
+
+        text = html_text.flatten_html("<p>One</p><h3>Two</h3><ul><li>Three</li></ul>")
+        self.assertEqual([line for line in text.split("\n") if line],
+                         ["One", "Two", "Three"])
+
+    def test_single_line_mode_still_available(self):
+        from jobbuddy import html_text
+
+        text = html_text.flatten_html("<p>One</p><p>Two</p>", preserve_blocks=False)
+        self.assertNotIn("\n", text)
+
+    def test_norm_jd_text_keeps_lines_but_collapses_spaces(self):
+        cleaned = job_schema.norm_jd_text("A   B\n\n\nC  \n  D")
+        self.assertEqual(cleaned, "A B\nC\nD")
+
+    def test_norm_text_still_collapses_everything(self):
+        # Titles must stay on one line; only descriptions keep structure.
+        self.assertEqual(job_schema.norm_text("A\nB   C"), "A B C")
