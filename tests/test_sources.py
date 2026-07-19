@@ -310,16 +310,15 @@ class FetcherTiers(unittest.TestCase):
         self.assertEqual(fetcher.strategy_for("https://www.techinasia.com/jobs"), "browser")
 
     def test_challenge_walled_hosts_need_an_unblocker(self):
-        """Sites that block browsers but do NOT name this crawler.
+        """Sites whose wildcard robots group allows the job paths.
 
-        Indeed used to be in this list and has moved to `never`: it names
-        ClaudeBot and anthropic-ai in robots.txt, which is a different thing
-        from a generic bot wall and is not something to buy a way around.
+        They challenge browsers, so an unblocker is the route -- a technical
+        obstacle, not a refusal.
         """
         from jobbuddy import fetcher
 
         for url in ("https://glints.com/sg/jobs", "https://www.glassdoor.sg/Job",
-                    "https://www.fastjobs.sg/jobs"):
+                    "https://www.fastjobs.sg/jobs", "https://sg.indeed.com/jobs"):
             with self.subTest(url=url):
                 self.assertEqual(fetcher.strategy_for(url), "unblocker")
 
@@ -510,54 +509,62 @@ class RobotsNamedBlocks(unittest.TestCase):
                   "Disallow: /jobs\n")
         self.assertIn("ClaudeBot", self.recon.named_blocks(robots))
 
-    def test_recon_refuses_to_proceed_past_a_named_block(self):
+    def test_a_named_block_alone_does_not_stop_the_recon(self):
+        """Naming ClaudeBot says nothing about a program that is not ClaudeBot.
+
+        Treating a named block as a refusal excluded Indeed, NodeFlair and
+        JobStreet, all three of which ALLOW their job paths under
+        `User-agent: *` -- the group that actually governs this tool.
+        """
         report = self.recon.Recon(url="https://example.test",
-                                  named_blocks=["ClaudeBot"])
+                                  named_blocks=["ClaudeBot"],
+                                  jobs_path_allowed=True,
+                                  has_job_posting_markup=True)
+        strategy, _ = report.recommendation()
+        self.assertNotEqual(strategy, "do not scrape")
+
+    def test_wildcard_disallow_does_stop_the_recon(self):
+        """`User-agent: *` refusing the job paths is the site refusing everyone."""
+        report = self.recon.Recon(url="https://example.test",
+                                  jobs_path_allowed=False)
         strategy, why = report.recommendation()
         self.assertEqual(strategy, "do not scrape")
-        self.assertIn("explicit refusal", why)
+        self.assertIn("User-agent: *", why)
 
 
-class NamedBlockHostsAreExcluded(unittest.TestCase):
-    """Sites that named this crawler are excluded before the unblocker tier.
+class ExclusionPolicy(unittest.TestCase):
+    """What is excluded, and on what grounds.
 
-    A generic bot wall is a site defending itself against load. Naming an agent
-    is a site answering a question. Buying an unblocker to get past the second
-    one is overriding an explicit answer.
+    Verified with urllib.robotparser against the agent this tool actually uses.
+    An earlier version excluded Indeed, NodeFlair and JobStreet for naming
+    `ClaudeBot` -- Anthropic's crawler, not this program. All three allow their
+    job paths under `User-agent: *`.
     """
 
-    def test_named_block_hosts_are_never_fetched(self):
+    def test_wildcard_disallow_is_excluded(self):
+        """JobsDB and Jora refuse every crawler, which includes this one."""
         from jobbuddy import fetcher
 
-        for url in ("https://sg.indeed.com/jobs?q=ml",
-                    "https://nodeflair.com/jobs",
-                    "https://sg.jobstreet.com/jobs",
-                    "https://sg.jora.com/jobs"):
+        for url in ("https://sg.jobsdb.com/jobs", "https://sg.jora.com/jobs"):
             with self.subTest(url=url):
                 self.assertEqual(fetcher.strategy_for(url), "never")
 
-    def test_a_named_block_host_cannot_reach_the_unblocker(self):
-        import os
-
+    def test_linkedin_excluded_on_contract_not_robots(self):
+        """Not a robots question. The account at risk is the job seeker's own."""
         from jobbuddy import fetcher
 
-        os.environ["SCRAPING_PROVIDER"] = "scrapingbee"
-        os.environ["SCRAPING_API_KEY"] = "test-key-not-real"
-        try:
-            result = fetcher.fetch_page("https://sg.indeed.com/jobs")
-            self.assertFalse(result.ok)
-            self.assertEqual(result.strategy, "never")
-        finally:
-            os.environ.pop("SCRAPING_PROVIDER", None)
-            os.environ.pop("SCRAPING_API_KEY", None)
+        self.assertEqual(fetcher.strategy_for("https://www.linkedin.com/jobs"),
+                         "never")
 
-    def test_cloudflare_only_hosts_still_reach_the_unblocker(self):
-        """Glints blocks browsers but does NOT name this crawler.
+    def test_wildcard_allowed_hosts_reach_the_unblocker(self):
+        """Cloudflare is a technical obstacle, not a refusal.
 
-        robots.txt permits its job detail pages. That is a different situation
-        from a named refusal, and must stay reachable via a paid vendor.
+        These sites permit the job paths under `User-agent: *` and merely
+        challenge browsers, so a commercial unblocker is a legitimate route.
         """
         from jobbuddy import fetcher
 
-        self.assertEqual(fetcher.strategy_for("https://glints.com/sg/jobs"),
-                         "unblocker")
+        for url in ("https://glints.com/sg/jobs", "https://sg.indeed.com/jobs",
+                    "https://nodeflair.com/jobs", "https://sg.jobstreet.com/jobs"):
+            with self.subTest(url=url):
+                self.assertEqual(fetcher.strategy_for(url), "unblocker")

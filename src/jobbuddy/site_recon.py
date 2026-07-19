@@ -70,14 +70,19 @@ class Recon:
     notes: list[str] = field(default_factory=list)
 
     def recommendation(self) -> tuple[str, str]:
-        """(strategy, why). The cheapest appropriate route in."""
-        if self.named_blocks:
-            return ("do not scrape",
-                    f"robots.txt names {', '.join(self.named_blocks)} specifically. "
-                    "That is an explicit refusal, not a technical obstacle. "
-                    "Buy this inventory through an aggregator instead.")
+        """(strategy, why). The cheapest appropriate route in.
+
+        The decisive test is the `User-agent: *` group, because that is the
+        rule governing this tool. `named_blocks` is reported for context but
+        does NOT decide: those tokens identify other people's crawlers, and a
+        rule aimed at GPTBot does not bind a program that is not GPTBot.
+        Treating a named block as a refusal excluded three sites whose wildcard
+        group plainly allowed their job paths.
+        """
         if self.jobs_path_allowed is False:
-            return ("do not scrape", "robots.txt disallows the job listing paths")
+            return ("do not scrape",
+                    "robots.txt `User-agent: *` disallows the job listing paths -- "
+                    "the site is refusing every crawler, this one included")
         if self.api_calls:
             best = self.api_calls[0]
             return ("json api", f"the site's own frontend calls {best['url'][:90]}")
@@ -298,13 +303,16 @@ def recon(url: str, inspect: bool = True) -> Recon:
     report.sitemaps = robots["sitemaps"]
 
     if report.named_blocks:
+        # Context, not a verdict. These name other crawlers; what governs this
+        # tool is the wildcard group checked above.
         report.notes.append(
-            f"robots.txt names {', '.join(report.named_blocks)} and refuses them. "
-            "Stopping here -- an explicit refusal is not something to route around.")
-        return report
+            f"robots.txt separately refuses {', '.join(report.named_blocks)} -- "
+            "those are other people's crawlers and do not describe this tool, "
+            "but they tell you how the site feels about automated collection.")
 
     if report.jobs_path_allowed is False:
-        report.notes.append("robots.txt disallows job paths; stopping.")
+        report.notes.append(
+            "robots.txt `User-agent: *` disallows the job paths; stopping.")
         return report
 
     if report.sitemaps:

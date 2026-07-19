@@ -44,6 +44,9 @@ BROWSER_OK = {
 }
 
 # Sites that challenge even a real browser. Reachable only via a paid unblocker.
+# Challenge browsers, but their `User-agent: *` group permits the job paths --
+# so the obstacle here is technical, not a refusal. Reachable with a commercial
+# unblocker if you configure one.
 NEEDS_UNBLOCKER = {
     "glints.com", "www.glints.com",
     "nodeflair.com", "www.nodeflair.com",
@@ -53,26 +56,30 @@ NEEDS_UNBLOCKER = {
     "www.glassdoor.sg", "www.glassdoor.com",
 }
 
-# Never attempted, at any tier, and not because of a technical obstacle.
+# Never attempted, at any tier.
 #
-# LinkedIn's User Agreement 8.2 prohibits automated access, and the account
-# that gets restricted is the job seeker's own -- losing your LinkedIn
-# mid-search is worse than missing its listings.
+# The test that matters is the `User-agent: *` group, because that is the rule
+# governing THIS tool. An earlier version of this list was wrong about that:
+# it excluded Indeed, NodeFlair and JobStreet because their robots.txt names
+# `ClaudeBot` and `anthropic-ai` in a disallow group. Those tokens identify
+# Anthropic's crawlers. This is a standalone program identifying as
+# `job-buddy/1.0`, and robots.txt directives are per-agent -- a rule aimed at
+# GPTBot does not bind a script that is not GPTBot. Checked with
+# urllib.robotparser against `job-buddy`, all three ALLOW their job paths.
+# They are on the unblocker tier now, where their Cloudflare walls put them.
 #
-# The rest name this crawler family in their robots.txt: verified with
-# site_recon, Indeed and NodeFlair list `ClaudeBot` and `anthropic-ai` by name
-# in a disallow group, while allowing LinkedInBot and Googlebot. A generic bot
-# wall is a site defending itself against load; naming an agent is a site
-# answering a question it was asked. Routing an unblocker around that would be
-# overriding an explicit answer, so these are excluded before the unblocker
-# tier is ever reached. Their inventory is reachable through the aggregator
-# APIs instead, where a vendor has its own relationship with the source.
+# What remains here, and why each one:
+#
+#   jobsdb, jora   `User-agent: *` disallows the job paths outright. That rule
+#                  does bind this tool -- it is the site refusing everybody.
+#
+#   linkedin       Not a robots question at all. Their User Agreement 8.2
+#                  prohibits automated access, and that is a contract the
+#                  account holder agreed to. The collateral is the job
+#                  seeker's own account, mid-search.
 NEVER = {
     "www.linkedin.com", "linkedin.com",
-    "sg.indeed.com", "www.indeed.com", "indeed.com",
-    "nodeflair.com", "www.nodeflair.com",
-    "sg.jobstreet.com", "www.jobstreet.com", "jobstreet.com",
-    "hk.jobsdb.com", "sg.jobsdb.com",
+    "hk.jobsdb.com", "sg.jobsdb.com", "jobsdb.com",
     "sg.jora.com", "jora.com",
 }
 
