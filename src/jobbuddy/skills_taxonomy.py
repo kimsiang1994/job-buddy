@@ -122,6 +122,28 @@ _NOISE_PATTERNS = (
     r"^(web application deployment|simulation software|simulation)$",
     r"^(architect|digital design|anomaly detection)$",
     r"\b(mindset|attitude|ability|willingness|passion|team player)\b",
+
+    # Soft attributes. Real qualities, but not things a resume can be matched
+    # on -- and MCF's extractor emits them constantly, so every candidate
+    # "lacked" them and every score was dragged down by words no job is
+    # actually about.
+    r"^(collaboration|communication|teamwork|interpersonal( skills)?|"
+    r"analytical( skills| thinking)?|problem[- ]solving|critical thinking|"
+    r"attention to detail|adaptability|flexibility|creativity|initiative|"
+    r"leadership|self[- ]motivat\w*|time management|organisational skills|"
+    r"organizational skills|work ethic|multitasking|fast[- ]paced|"
+    r"detail[- ]oriented|proactive|independent|resourceful)$",
+
+    # Generic activity nouns that name no capability on their own.
+    r"^(running|onboarding|efficiency|innovation|excellence|quality|"
+    r"delivery|execution|planning|coordination|documentation|reporting|"
+    r"maintenance|troubleshooting|support|training|mentoring|"
+    r"stakeholders?|customers?|clients?|users?|teams?|projects?)$",
+
+    # Fragments and acronyms too short or ambiguous to mean anything. 'COM'
+    # was matching as a skill; it is the tail of a domain name.
+    r"^(com|net|org|inc|ltd|pte|www|http|api\d|the|and|for|with)$",
+
     r"^.{0,2}$",           # one or two characters is never a usable skill term
     r"^\W+$",
 )

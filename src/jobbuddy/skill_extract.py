@@ -70,6 +70,23 @@ _HEADING_RE = re.compile(
     re.M)
 
 
+# How much a requirement counts, by where it appears.
+#
+# A job description is not a flat list. "Senior Machine Learning Engineer"
+# wanting Python, ML and AWS, with twenty other things under 'nice to have', is
+# mostly about the first three -- but scoring every term equally made a
+# candidate who met all three and none of the twenty look like a 13% match.
+#
+# So the long tail is priced as a long tail. Missing 'Customer Segmentation' on
+# a role whose title is Machine Learning Engineer should barely register;
+# missing Python should be disqualifying.
+WEIGHT_IN_TITLE = 4.0        # named in the job title: this IS the job
+WEIGHT_REQUIRED = 1.0        # under Requirements / Must have
+WEIGHT_OPTIONAL = 0.25       # under Nice to have / Preferred
+WEIGHT_REPEAT_BONUS = 0.25   # per extra mention, capped
+MAX_REPEAT_BONUS = 3
+
+
 @dataclass
 class ExtractedSkill:
     """One skill found in a description, and how strongly it was asked for."""
@@ -78,6 +95,8 @@ class ExtractedSkill:
     canonical: str
     required: bool
     evidence: str
+    weight: float = 1.0
+    mentions: int = 1
 
     def __hash__(self) -> int:
         return hash(self.canonical)
@@ -314,7 +333,8 @@ def classify_position(position: int, marks: list[tuple[int, str]]) -> str:
 # --------------------------------------------------------------------------
 
 def extract(text: str, max_skills: int = 40,
-            path: Path = VOCAB_PATH) -> list[ExtractedSkill]:
+            path: Path = VOCAB_PATH,
+            title: str = "") -> list[ExtractedSkill]:
     """Find vocabulary skills in a job description.
 
     Independent of the candidate's profile on purpose. Searching a description
@@ -327,6 +347,18 @@ def extract(text: str, max_skills: int = 40,
     marks = section_map(text)
     found: dict[str, ExtractedSkill] = {}
     consumed: list[tuple[int, int]] = []
+
+    # Canonical forms named in the title. Compared canonically, not literally:
+    # a title reading "AI Engineer" is about `artificial intelligence`, and a
+    # literal search for that phrase in that title finds nothing.
+    title_canon: set[str] = set()
+    if title:
+        words = re.split(r"[^\w+#.]+", title.lower())
+        for size in (3, 2, 1):
+            for start in range(len(words) - size + 1):
+                phrase = " ".join(words[start:start + size]).strip()
+                if phrase:
+                    title_canon.add(skills_taxonomy.canon(phrase))
 
     for term, pattern in compiled_vocab(path):
         canonical = skills_taxonomy.canon(term)
@@ -344,18 +376,28 @@ def extract(text: str, max_skills: int = 40,
                 continue    # a skill named under 'Benefits' is not a requirement
 
             consumed.append((start, end))
+
+            mentions = len(pattern.findall(text))
+            weight = WEIGHT_REQUIRED if section == "required" else WEIGHT_OPTIONAL
+            if canonical in title_canon:
+                # Named in the title, so it is the job rather than a detail of
+                # it. Overrides the section entirely.
+                weight = WEIGHT_IN_TITLE
+            weight += WEIGHT_REPEAT_BONUS * min(mentions - 1, MAX_REPEAT_BONUS)
+
             found[canonical] = ExtractedSkill(
                 term=term, canonical=canonical,
                 required=(section == "required"),
                 evidence=text[max(0, start - 40):end + 40].strip(),
+                weight=round(weight, 2), mentions=mentions,
             )
             break
 
         if len(found) >= max_skills:
             break
 
-    # Required first, so a truncated list keeps the demands over the wishes.
-    return sorted(found.values(), key=lambda s: (not s.required, s.canonical))
+    # Heaviest first, so a truncated list keeps what the job is actually about.
+    return sorted(found.values(), key=lambda s: (-s.weight, s.canonical))
 
 
 def enrich(job: dict[str, Any], path: Path = VOCAB_PATH) -> dict[str, Any]:
@@ -368,12 +410,13 @@ def enrich(job: dict[str, Any], path: Path = VOCAB_PATH) -> dict[str, Any]:
         return job
 
     text = job.get("jd_text") or ""
-    skills = extract(text, path=path)
+    skills = extract(text, path=path, title=job.get("title") or "")
     if not skills:
         return job
 
     job["skills_raw"] = [s.term for s in skills]
     job["skills_key"] = [s.term for s in skills if s.required]
+    job["skills_weight"] = {s.term: s.weight for s in skills}
     provenance = job.setdefault("_provenance", {})
     provenance["skills"] = (f"extracted from description against a "
                             f"{len(load_vocab(path))}-term vocabulary; "

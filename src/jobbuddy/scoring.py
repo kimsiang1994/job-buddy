@@ -128,29 +128,67 @@ def score_skill_match(job: dict[str, Any], profile: dict[str, Any],
         return None, {"reason": "job lists no usable skills", "noise_dropped": dropped}
 
     key_terms = {skills_taxonomy.canon(s) for s in job.get("skills_key") or []}
+    # Per-skill importance, set by the extractor from where the term appeared.
+    # A job description is not a flat list: a skill named in the title is the
+    # job, one under 'nice to have' is a wish. Scoring them equally made a
+    # candidate who met every core requirement and none of the twenty
+    # peripheral ones look like a 13% match.
+    declared = job.get("skills_weight") or {}
+    title_text = f" {(job.get('title') or '').lower()} "
+
+    def importance_of(term: str) -> float:
+        if term in declared:
+            return float(declared[term])
+        # MCF and any other source that flags key skills but gives no weights.
+        if skills_taxonomy.canon(term) in key_terms:
+            return 2.0
+        if term.lower() in title_text:
+            return 4.0
+        return 1.0
 
     total = 0.0
     earned = 0.0
+    core_total = 0.0
+    core_earned = 0.0
     matched: list[str] = []
     missing: list[str] = []
+    missing_core: list[str] = []
+
     for term in terms:
-        importance = 2.0 if skills_taxonomy.canon(term) in key_terms else 1.0
+        importance = importance_of(term)
         total += importance
+        is_core = importance >= 1.0        # required or better; excludes wishes
+        if is_core:
+            core_total += importance
+
         weight, via, how = skills_taxonomy.match(term, owned)
         if weight > 0:
             earned += importance * weight
+            if is_core:
+                core_earned += importance * weight
             matched.append(f"{term} ({how} -> {via})" if how != "exact" else term)
         else:
             missing.append(term)
+            if is_core:
+                missing_core.append(term)
 
     score = 100.0 * earned / total if total else None
-    return score, {
+    core_score = (100.0 * core_earned / core_total) if core_total else None
+
+    detail = {
         "matched": matched[:20],
         "missing": missing[:20],
         "matched_count": len(matched),
         "total_count": len(terms),
         "noise_dropped": dropped,
+        # Reported separately because it answers the question that actually
+        # matters: not "did you tick every box", but "do you have what this job
+        # is about". Nobody is a perfect match for a 38-item wishlist.
+        "core_score": None if core_score is None else round(core_score, 1),
+        "missing_core": missing_core[:10],
+        "core_requirements": len([t for t in terms if importance_of(t) >= 1.0]),
     }
+    return score, detail
 
 
 def score_seniority_fit(job: dict[str, Any], profile: dict[str, Any],
