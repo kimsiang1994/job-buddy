@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from jobbuddy import fact_guard
+from jobbuddy import fact_guard, strategies
 
 # More than this and the one-page renderer is guaranteed to be cutting, which
 # wastes selection effort on bullets nobody will read.
@@ -81,17 +81,25 @@ def _facts_block(facts: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def build_prefix(profile: dict[str, Any]) -> str:
-    """The system message. Constant for a profile, so the cache holds."""
+def build_prefix(profile: dict[str, Any],
+                 strategy_names: list[str] | None = None) -> str:
+    """The system message. Constant for a profile, so the cache holds.
+
+    Strategy instructions go HERE rather than in the per-job message: they are
+    constant for a run, so they stay inside the cached prefix. Putting them in
+    the job message would push a cache miss onto every single call.
+    """
     facts = [f for f in (profile.get("facts") or []) if f.get("verified")]
     never = (profile.get("constraints") or {}).get("never_claim") or []
-    return "\n\n".join([
+    base = "\n\n".join([
         SELECTION_RULES,
         "NEVER CLAIM (these are false about this candidate):\n"
         + "\n".join(f"- {n}" for n in sorted(never)) if never else "NEVER CLAIM: (none set)",
         f"VERIFIED FACTS ({len(facts)}):\n{_facts_block(facts)}",
         SELECTION_SCHEMA,
     ])
+    active, _ = strategies.resolve(strategy_names)
+    return strategies.apply_prompt(base, active)
 
 
 def build_job_message(job: dict[str, Any], requirements: list[str]) -> str:
@@ -114,13 +122,14 @@ def build_job_message(job: dict[str, Any], requirements: list[str]) -> str:
 
 def select(profile: dict[str, Any], job: dict[str, Any],
            requirements: list[str] | None = None,
-           chat: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
+           chat: Callable[..., dict[str, Any]] | None = None,
+           strategy_names: list[str] | None = None) -> dict[str, Any]:
     """Ask which facts answer this job. Returns the raw selection, ungated."""
     if chat is None:
         from jobbuddy.deepseek.deepseek_client import json_chat as chat
 
     result = chat(
-        [{"role": "system", "content": build_prefix(profile)},
+        [{"role": "system", "content": build_prefix(profile, strategy_names)},
          {"role": "user", "content": build_job_message(job, requirements or [])}],
         schema_keys=("selected",),
         profile="analyze",
@@ -144,7 +153,8 @@ def select(profile: dict[str, Any], job: dict[str, Any],
 def tailor(profile: dict[str, Any], job: dict[str, Any],
            requirements: list[str] | None = None,
            chat: Callable[..., dict[str, Any]] | None = None,
-           max_bullets: int = MAX_BULLETS) -> dict[str, Any]:
+           max_bullets: int = MAX_BULLETS,
+           strategy_names: list[str] | None = None) -> dict[str, Any]:
     """Select, gate, and return a ranked resume draft.
 
     The gate runs on the way out, unconditionally. A caller cannot obtain
@@ -154,7 +164,7 @@ def tailor(profile: dict[str, Any], job: dict[str, Any],
     facts_by_id = {str(f.get("fact_id")): f
                    for f in (profile.get("facts") or []) if f.get("verified")}
 
-    selection = select(profile, job, requirements, chat)
+    selection = select(profile, job, requirements, chat, strategy_names)
     if not selection.get("ok"):
         return {"ok": False, "error": selection.get("error"), "bullets": []}
 
@@ -208,8 +218,15 @@ def tailor(profile: dict[str, Any], job: dict[str, Any],
             "fell_back": bool(verdict and verdict.fallback_used),
         })
 
+    active, strategy_problems = strategies.resolve(strategy_names)
+    # After the guard, never before. A transform running first could introduce
+    # text that then passed validation as though a human had approved it.
+    bullets = strategies.apply_post(bullets, active)
+
     return {
         "ok": True,
+        "strategies": [s.name for s in active],
+        "strategy_problems": strategy_problems,
         # Surfaced rather than swallowed: if this is ever False the two modules
         # have drifted apart and every citation in the run is suspect.
         "attribution_aligned": aligned,
