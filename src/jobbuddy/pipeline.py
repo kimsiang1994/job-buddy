@@ -36,7 +36,7 @@ REPO_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = REPO_DIR / "potential applications"
 
 CSV_COLUMNS = (
-    "rank", "total", "title", "company", "seniority", "salary_min_sgd",
+    "rank", "adjusted", "total", "confidence", "source", "title", "company", "seniority", "salary_min_sgd",
     "salary_max_sgd", "applications", "views", "apps_per_view", "age_days",
     "vacancies", "is_agency", "reposted", "skill_matched", "skill_total",
     "location", "scope", "job_key", "url", "why",
@@ -84,6 +84,36 @@ class RunResult:
         return 1 if self.degraded else 0
 
 
+def _all_sources(enabled: list[str] | None = None) -> Callable[..., tuple[list[dict], dict]]:
+    """Adapt the multi-source registry to the single-source fetch signature.
+
+    Keeps `collect` unaware of how many sources exist. Per-source counters are
+    flattened with a prefix so a run summary still shows where jobs came from
+    and which adapter dropped what.
+    """
+    from jobbuddy import sources
+
+    def fetch(query: str, **kwargs: Any) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        jobs, per_source = sources.fetch_all(
+            query,
+            max_results_per_source=kwargs.get("max_results", 60),
+            singapore_only=kwargs.get("singapore_only", True),
+            open_only=kwargs.get("open_only", True),
+            cache_ttl_s=kwargs.get("cache_ttl_s", 900.0),
+            enabled=enabled,
+        )
+        flat: dict[str, int] = {}
+        for name, counts in per_source.items():
+            flat[f"{name}_kept"] = counts.get("kept", 0)
+            for key in ("invalid", "unusable", "error"):
+                if counts.get(key):
+                    flat[key] = flat.get(key, 0) + counts[key]
+        flat["fetched"] = len(jobs)
+        return jobs, flat
+
+    return fetch
+
+
 def collect(
     scope: dict[str, Any],
     config: dict[str, Any],
@@ -97,7 +127,14 @@ def collect(
     rather than looked up, so the dedupe and filter logic can be exercised with
     no network.
     """
-    fetch_jobs = fetch_jobs or source_mcf.fetch_jobs
+    # Default to every enabled source, not just MyCareersFuture. MCF covers the
+    # middle of the Singapore market well but is not the whole of it -- its
+    # advertising mandate only binds when a foreign work pass is involved, and
+    # exempts anything paying over S$22,500/month, which is exactly the band a
+    # senior search cares about.
+    if fetch_jobs is None:
+        enabled = (config.get("sources") or {}).get("enabled")
+        fetch_jobs = _all_sources(enabled)
     filters = config.get("filters") or {}
     counters: dict[str, int] = {}
     seen: dict[str, dict[str, Any]] = {}
@@ -200,7 +237,7 @@ def run(
 
     for job in jobs:
         scoring.score_job(job, config, observation.velocity)
-    jobs.sort(key=lambda j: j["scores"]["total"], reverse=True)
+    jobs.sort(key=lambda j: j["scores"]["adjusted"], reverse=True)
 
     result = RunResult(
         run_id=run_id,
@@ -268,7 +305,7 @@ def run_scopes(
     observation = history.observe(all_jobs, run_id, record=not dry_run, snapshot=not dry_run)
     for job in all_jobs:
         scoring.score_job(job, config, observation.velocity)
-    all_jobs.sort(key=lambda j: j["scores"]["total"], reverse=True)
+    all_jobs.sort(key=lambda j: j["scores"]["adjusted"], reverse=True)
 
     result = RunResult(
         run_id=run_id, jobs=all_jobs, excluded=all_excluded, counters=counters,
@@ -320,7 +357,10 @@ def csv_row(job: dict[str, Any], rank: int) -> dict[str, Any]:
     skill = (components.get("skill_match") or {}).get("detail") or {}
     return {
         "rank": rank,
+        "adjusted": scores.get("adjusted"),
         "total": scores.get("total"),
+        "confidence": scores.get("confidence"),
+        "source": job.get("_source_adapter") or job.get("source"),
         "title": job.get("title"),
         "company": job.get("company"),
         "seniority": job.get("seniority"),

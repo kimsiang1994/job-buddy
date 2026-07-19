@@ -1,8 +1,18 @@
 """MyCareersFuture -- the primary source.
 
-Every employer hiring in Singapore must post here under the Fair Consideration
-Framework, so MCF is close to the complete SG universe. It also carries things
-no other board publishes:
+The best single source for Singapore, but NOT the complete market -- a belief
+this module was originally written under, and which is wrong in a way that
+matters.
+
+The Fair Consideration Framework is a precondition on *foreign work-pass
+applications*, not a general posting mandate. A role the employer expects to
+fill with a Singaporean or PR need never appear here, at any salary. And MOM
+exempts jobs paying >= S$22,500/month fixed, and companies with fewer than 10
+employees -- so the senior band and the startups are both systematically
+under-represented. Treat MCF as broad coverage of the middle of the market, and
+lean on the ATS adapters for the top of it.
+
+What MCF does carry that no other board publishes:
 
   - salary, structured and mandatory (legally required, not optional metadata)
   - `totalNumberJobApplication`  -- the REAL number of applications submitted

@@ -41,9 +41,26 @@ jobbuddy --explain mcf:59501ac0...       # one job's full history
 ## Where the jobs come from
 
 **MyCareersFuture** (`api.mycareersfuture.gov.sg/v2/jobs`) — keyless, and
-`robots.txt` disallows nothing. Every employer hiring in Singapore must post
-there under the Fair Consideration Framework, so it reaches TikTok, Shopee and
-Grab, none of which expose a public careers API.
+`robots.txt` disallows nothing. It reaches TikTok, Shopee and Grab, none of
+which expose a public careers API.
+
+**But it is not the whole market, and the gap is worst where you are looking.**
+The Fair Consideration Framework is a precondition on *foreign work-pass
+applications*, not a general posting mandate — a role an employer expects to
+fill with a Singaporean or PR carries no obligation at any salary. On top of
+that, MOM exempts:
+
+| Exemption | Effect on a senior search |
+|---|---|
+| Fixed salary **≥ S$22,500/month** | The band you most want is exempt. MOM's stated rationale is that these roles are filled by search and referral |
+| Companies with **< 10 employees** | Startups are invisible |
+| Advertised max ≤ **2× the min** | Wide senior bands get compressed, so salary filters read understated ceilings |
+
+The ONE Pass (AI and Tech) track from Jan 2027 requires ≥$22.5k fixed monthly —
+routing senior AI hiring into a channel MyCareersFuture never sees.
+
+So MCF is the best *single* source for Singapore, not a complete one. The other
+adapters are not optional polish; they cover the top of the market.
 
 It publishes three things almost nothing else does:
 

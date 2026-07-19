@@ -43,18 +43,23 @@ def print_result(result: pipeline.RunResult, top: int, had_prior_runs: bool) -> 
           f"{result.prior_run_count} prior run(s))\n")
 
     header = (f"{'#':>3} {'score':>5} {'title':42} {'company':20} "
-              f"{'level':9} {'salary':13} {'apps':>5} {'age':>5}")
+              f"{'level':9} {'salary':13} {'apps':>5} {'conf':>5} {'src':<9}")
     print(header)
     print("-" * len(header))
     for index, job in enumerate(result.jobs[:top], start=1):
         salary = (f"{job['salary_min_sgd']}-{job['salary_max_sgd']}"
                   if job["salary_is_stated"] else "not stated")
         marker = "*" if job["job_key"] in result.new_keys else " "
-        age = f"{job['age_days']:.0f}" if job["age_days"] is not None else "-"
-        print(f"{index:3d}{marker}{job['scores']['total']:5.0f} "
+        scores = job["scores"]
+        source = (job.get("_source_adapter") or job.get("source") or "?")[:9]
+        # Show the ADJUSTED score, because that is what the list is ordered by.
+        # Printing the raw total next to a rank derived from something else
+        # makes a correct ordering look arbitrary.
+        print(f"{index:3d}{marker}{scores['adjusted']:5.0f} "
               f"{job['title'][:42]:42} {job['company'][:20]:20} "
               f"{str(job['seniority'] or '-'):9} {salary:13} "
-              f"{str(job['applications'] or '-'):>5} {age:>5}")
+              f"{str(job['applications'] or '-'):>5} "
+              f"{scores['confidence']:>5.0%} {source:<9}")
 
     if had_prior_runs:
         print("\n  * = first seen this run")

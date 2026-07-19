@@ -1,0 +1,79 @@
+{
+  "_written_by": "source_ats.py",
+  "_comment": "company_norm -> ATS board. Built by discovery; edit freely, hand-added entries are never overwritten by a re-crawl.",
+  "boards": {
+    "stripe": {
+      "vendor": "greenhouse",
+      "token": "stripe",
+      "website": "https://stripe.com"
+    },
+    "airwallex": {
+      "vendor": "ashby",
+      "token": "airwallex",
+      "website": "https://airwallex.com"
+    },
+    "coda": {
+      "vendor": "lever",
+      "token": "Coda",
+      "website": "https://coda.io"
+    },
+    "boschgroup": {
+      "vendor": "smartrecruiters",
+      "token": "BoschGroup",
+      "website": "https://bosch.com"
+    },
+    "xora innovation": {
+      "vendor": null,
+      "token": null,
+      "website": "https://xora.vc/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "assurity trusted solutions": {
+      "vendor": "workable",
+      "token": "assurity-trusted-solutions",
+      "website": "https://www.assurity.sg/",
+      "via": "discovery"
+    },
+    "onyx capital": {
+      "vendor": "workable",
+      "token": "onyx-capital-group",
+      "website": "https://www.onyxcapitalgroup.com/",
+      "via": "discovery"
+    },
+    "infosys & australia": {
+      "vendor": null,
+      "token": null,
+      "website": "http://www.infosysconsulting.com",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "vdl enabling": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.vdletg.com/en",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "polymer capital": {
+      "vendor": null,
+      "token": null,
+      "website": "https://polymercapital.com/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "moreton capital partners": {
+      "vendor": "workable",
+      "token": "moreton-capital-partners",
+      "website": "http://moretoncp.com",
+      "via": "discovery"
+    },
+    "blockchain & climate institute bci america": {
+      "vendor": null,
+      "token": null,
+      "website": "http://www.blockchainclimateinstitute.org",
+      "via": "discovery",
+      "note": "no ATS found"
+    }
+  }
+}

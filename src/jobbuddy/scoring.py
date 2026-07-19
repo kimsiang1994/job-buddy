@@ -48,6 +48,11 @@ class ScoreContext:
 # the pile is deep and the recruiter is usually already interviewing.
 FRESHNESS_HALFLIFE_DAYS = 21.0
 
+# What an unmeasurable component is worth. Not 50-as-a-guess -- 50 is the point
+# at which a missing signal neither helps nor hurts, which is the only honest
+# thing to say about evidence you do not have.
+NEUTRAL_PRIOR = 50.0
+
 _warned: set[str] = set()
 _config_cache: dict[str, Any] | None = None
 
@@ -462,12 +467,31 @@ def score_job(
 
     total = round(weighted_sum / weight_total, 1) if weight_total else 0.0
 
+    # Confidence-adjusted rank.
+    #
+    # Renormalisation alone is right within one source and wrong across several.
+    # MyCareersFuture publishes salary and a real application count; Workable,
+    # the ATS boards and HN publish neither. So a sparse job is scored only on
+    # the components where it happens to do well -- and freshness and low
+    # application friction are exactly those. Measured on a live run: nine jobs
+    # with no salary scored 90-95 while a Micron role with a stated
+    # 10-20k range scored 82. Knowing less made a job look better.
+    #
+    # So the score stays honest about what was measurable, and the RANK shrinks
+    # it toward neutral in proportion to how little was measurable. A job graded
+    # on half the evidence moves half-way to 50. Nothing is imputed; the
+    # uncertainty is priced instead of hidden.
+    available = sum(float(w or 0) for k, w in weights.items() if not k.startswith("_"))
+    confidence = (weight_total / available) if available else 0.0
+    adjusted = round(total * confidence + NEUTRAL_PRIOR * (1.0 - confidence), 1)
+
     job["scores"] = {
         "total": total,
+        "adjusted": adjusted,
+        "confidence": round(confidence, 3),
         "components": components,
         "weight_used": weight_total,
-        "weight_available": sum(float(w or 0) for k, w in weights.items()
-                                if not k.startswith("_")),
+        "weight_available": available,
         "explanation": explain(components, total),
     }
     return job["scores"]

@@ -2,7 +2,6 @@
   "_comment": "The one file you author by hand. Search scopes, hard filters, and scoring weights. Weights are here rather than in code because you will want to retune them after the first real run, and that should not be a code change.",
   "_written_by": "human",
   "_schema_version": 1,
-
   "filters": {
     "_comment": "Hard filters run BEFORE scoring and before anything costs money. A job that fails one is excluded with a reason, never ranked low.",
     "singapore_only": true,
@@ -23,7 +22,6 @@
     ],
     "exclude_agencies": false
   },
-
   "scopes": [
     {
       "name": "ai-engineer-sg",
@@ -61,7 +59,6 @@
       "max_results_per_query": 40
     }
   ],
-
   "profile": {
     "_comment": "Deterministic matching inputs only. The full verified fact store lives in profile/master_profile.json and is built later by import_resume.py.",
     "target_seniority": "senior",
@@ -70,28 +67,64 @@
     "_skills_comment": "Only skills the resume actually evidences. Adding one you cannot defend in an interview corrupts every downstream score, and later would let the tailoring stage cite it. Tiers: expert = led or built it; working = used it in production; familiar = have touched it.",
     "skills": {
       "expert": [
-        "python", "sql", "llm", "rag", "prompt engineering",
-        "machine learning", "artificial intelligence", "nlp",
-        "etl", "data engineering", "pyspark", "airflow", "data warehousing",
-        "fine tuning", "generative ai"
+        "python",
+        "sql",
+        "llm",
+        "rag",
+        "prompt engineering",
+        "machine learning",
+        "artificial intelligence",
+        "nlp",
+        "etl",
+        "data engineering",
+        "pyspark",
+        "airflow",
+        "data warehousing",
+        "fine tuning",
+        "generative ai"
       ],
       "working": [
-        "aws", "docker", "kubernetes", "langchain", "vector database",
-        "huggingface", "bert", "deep learning",
-        "bayesian modelling", "statistics", "data governance",
-        "stakeholder management", "java", "hive", "presto",
-        "data science", "data analysis",
-        "model deployment", "api", "microservices", "forecasting",
-        "clustering", "optimisation", "experimentation",
-        "marketing mix modelling", "software engineering"
+        "aws",
+        "docker",
+        "kubernetes",
+        "langchain",
+        "vector database",
+        "huggingface",
+        "bert",
+        "deep learning",
+        "bayesian modelling",
+        "statistics",
+        "data governance",
+        "stakeholder management",
+        "java",
+        "hive",
+        "presto",
+        "data science",
+        "data analysis",
+        "model deployment",
+        "api",
+        "microservices",
+        "forecasting",
+        "clustering",
+        "optimisation",
+        "experimentation",
+        "marketing mix modelling",
+        "software engineering"
       ],
       "familiar": [
-        "computer vision", "openshift", "selenium", "blockchain",
-        "spark", "hadoop", "gcp", "azure", "tensorflow", "pytorch"
+        "computer vision",
+        "openshift",
+        "selenium",
+        "blockchain",
+        "spark",
+        "hadoop",
+        "gcp",
+        "azure",
+        "tensorflow",
+        "pytorch"
       ]
     }
   },
-
   "weights": {
     "_comment": "Components that are null for a job (e.g. company_signal before 30 days of history) are dropped and the remaining weights renormalise, rather than being imputed to 50.",
     "skill_match": 30,
@@ -102,9 +135,25 @@
     "application_friction": 5,
     "freshness": 5
   },
-
   "budget": {
     "max_run_cost_usd": 1.0,
     "dev_limit_jobs": 3
+  },
+  "sources": {
+    "_comment": "Which adapters to query. MyCareersFuture alone covers the middle of the SG market but not the top -- its advertising mandate only binds when a foreign work pass is involved, and exempts anything paying over S$22,500/month. 'aggregator' reaches LinkedIn/Indeed/Glassdoor/JobStreet but needs a paid key.",
+    "enabled": [
+      "mcf",
+      "workable",
+      "ats"
+    ],
+    "available": [
+      "mcf",
+      "workable",
+      "ats",
+      "hn",
+      "aggregator"
+    ],
+    "discover_ats_boards": true,
+    "discovery_limit_per_run": 10
   }
 }
