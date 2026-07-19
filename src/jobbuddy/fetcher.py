@@ -53,12 +53,27 @@ NEEDS_UNBLOCKER = {
     "www.glassdoor.sg", "www.glassdoor.com",
 }
 
-# Never attempted, at any tier. Not a technical limit -- LinkedIn's User
-# Agreement 8.2 prohibits automated access, and the account that gets
-# restricted is the job seeker's own. Losing your LinkedIn mid-search is a
-# worse outcome than missing its listings.
+# Never attempted, at any tier, and not because of a technical obstacle.
+#
+# LinkedIn's User Agreement 8.2 prohibits automated access, and the account
+# that gets restricted is the job seeker's own -- losing your LinkedIn
+# mid-search is worse than missing its listings.
+#
+# The rest name this crawler family in their robots.txt: verified with
+# site_recon, Indeed and NodeFlair list `ClaudeBot` and `anthropic-ai` by name
+# in a disallow group, while allowing LinkedInBot and Googlebot. A generic bot
+# wall is a site defending itself against load; naming an agent is a site
+# answering a question it was asked. Routing an unblocker around that would be
+# overriding an explicit answer, so these are excluded before the unblocker
+# tier is ever reached. Their inventory is reachable through the aggregator
+# APIs instead, where a vendor has its own relationship with the source.
 NEVER = {
     "www.linkedin.com", "linkedin.com",
+    "sg.indeed.com", "www.indeed.com", "indeed.com",
+    "nodeflair.com", "www.nodeflair.com",
+    "sg.jobstreet.com", "www.jobstreet.com", "jobstreet.com",
+    "hk.jobsdb.com", "sg.jobsdb.com",
+    "sg.jora.com", "jora.com",
 }
 
 UNBLOCKER_ENDPOINTS = {

@@ -310,10 +310,16 @@ class FetcherTiers(unittest.TestCase):
         self.assertEqual(fetcher.strategy_for("https://www.techinasia.com/jobs"), "browser")
 
     def test_challenge_walled_hosts_need_an_unblocker(self):
+        """Sites that block browsers but do NOT name this crawler.
+
+        Indeed used to be in this list and has moved to `never`: it names
+        ClaudeBot and anthropic-ai in robots.txt, which is a different thing
+        from a generic bot wall and is not something to buy a way around.
+        """
         from jobbuddy import fetcher
 
-        for url in ("https://glints.com/sg/jobs", "https://sg.indeed.com/jobs",
-                    "https://www.glassdoor.sg/Job"):
+        for url in ("https://glints.com/sg/jobs", "https://www.glassdoor.sg/Job",
+                    "https://www.fastjobs.sg/jobs"):
             with self.subTest(url=url):
                 self.assertEqual(fetcher.strategy_for(url), "unblocker")
 
@@ -450,3 +456,108 @@ class HtmlStructurePreserved(unittest.TestCase):
     def test_norm_text_still_collapses_everything(self):
         # Titles must stay on one line; only descriptions keep structure.
         self.assertEqual(job_schema.norm_text("A\nB   C"), "A B C")
+
+
+class RobotsNamedBlocks(unittest.TestCase):
+    """A site naming this crawler in robots.txt has answered a question.
+
+    The first parser assumed one User-agent per rule group. robots.txt permits
+    STACKING them, and Indeed does exactly that -- a dozen agents listed before
+    a single Disallow. The parser captured nothing for a stacked group and
+    reported Indeed's job paths as ALLOWED, when Indeed had refused this
+    crawler by name.
+
+    A safety check that fails open is worse than no check, because it is the
+    one you stop verifying.
+    """
+
+    def setUp(self):
+        from jobbuddy import site_recon
+
+        self.recon = site_recon
+
+    def test_stacked_user_agents_are_all_detected(self):
+        robots = (
+            "User-agent: *\n"
+            "Disallow: /search\n"
+            "\n"
+            "User-agent: GPTBot\n"
+            "User-agent: CCBot\n"
+            "User-agent: anthropic-ai\n"
+            "User-agent: ClaudeBot\n"
+            "Disallow: /jobs\n"
+        )
+        found = self.recon.named_blocks(robots)
+        self.assertIn("ClaudeBot", found)
+        self.assertIn("anthropic-ai", found)
+
+    def test_single_agent_group_still_detected(self):
+        self.assertEqual(self.recon.named_blocks("User-agent: ClaudeBot\nDisallow: /\n"),
+                         ["ClaudeBot"])
+
+    def test_named_but_allowed_is_not_a_block(self):
+        """Being mentioned is not being refused."""
+        robots = ("User-agent: ClaudeBot\nAllow: /\n\n"
+                  "User-agent: *\nDisallow: /admin\n")
+        self.assertEqual(self.recon.named_blocks(robots), [])
+
+    def test_generic_rules_are_not_a_named_block(self):
+        self.assertEqual(self.recon.named_blocks("User-agent: *\nDisallow: /admin\n"), [])
+
+    def test_comments_do_not_confuse_the_parser(self):
+        robots = ("# our policy\n"
+                  "User-agent: ClaudeBot   # no AI crawlers\n"
+                  "Disallow: /jobs\n")
+        self.assertIn("ClaudeBot", self.recon.named_blocks(robots))
+
+    def test_recon_refuses_to_proceed_past_a_named_block(self):
+        report = self.recon.Recon(url="https://example.test",
+                                  named_blocks=["ClaudeBot"])
+        strategy, why = report.recommendation()
+        self.assertEqual(strategy, "do not scrape")
+        self.assertIn("explicit refusal", why)
+
+
+class NamedBlockHostsAreExcluded(unittest.TestCase):
+    """Sites that named this crawler are excluded before the unblocker tier.
+
+    A generic bot wall is a site defending itself against load. Naming an agent
+    is a site answering a question. Buying an unblocker to get past the second
+    one is overriding an explicit answer.
+    """
+
+    def test_named_block_hosts_are_never_fetched(self):
+        from jobbuddy import fetcher
+
+        for url in ("https://sg.indeed.com/jobs?q=ml",
+                    "https://nodeflair.com/jobs",
+                    "https://sg.jobstreet.com/jobs",
+                    "https://sg.jora.com/jobs"):
+            with self.subTest(url=url):
+                self.assertEqual(fetcher.strategy_for(url), "never")
+
+    def test_a_named_block_host_cannot_reach_the_unblocker(self):
+        import os
+
+        from jobbuddy import fetcher
+
+        os.environ["SCRAPING_PROVIDER"] = "scrapingbee"
+        os.environ["SCRAPING_API_KEY"] = "test-key-not-real"
+        try:
+            result = fetcher.fetch_page("https://sg.indeed.com/jobs")
+            self.assertFalse(result.ok)
+            self.assertEqual(result.strategy, "never")
+        finally:
+            os.environ.pop("SCRAPING_PROVIDER", None)
+            os.environ.pop("SCRAPING_API_KEY", None)
+
+    def test_cloudflare_only_hosts_still_reach_the_unblocker(self):
+        """Glints blocks browsers but does NOT name this crawler.
+
+        robots.txt permits its job detail pages. That is a different situation
+        from a named refusal, and must stay reachable via a paid vendor.
+        """
+        from jobbuddy import fetcher
+
+        self.assertEqual(fetcher.strategy_for("https://glints.com/sg/jobs"),
+                         "unblocker")
