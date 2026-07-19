@@ -13,7 +13,18 @@ gets deleted the first time it becomes inconvenient.
 
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
+
+# Redirected here as well as in tests/__init__.py, because `unittest discover
+# -s tests` (without `-t .`) treats this directory as the top level and never
+# imports the package __init__. Under that invocation the suite wrote its
+# fixtures into the real config/companies.json -- three duplicated lines are a
+# cheap price for a fix that does not depend on how the suite is launched.
+os.environ.setdefault(
+    "JB_COMPANY_REGISTRY",
+    os.path.join(tempfile.mkdtemp(prefix="jobbuddy-tests-"), "companies.json"))
 
 import json
 from jobbuddy import job_schema

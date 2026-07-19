@@ -18,6 +18,15 @@ the seam too: one adapter is a hypothetical seam, two are a real one.
 
 from __future__ import annotations
 
+import os
+import tempfile
+
+# See the note in test_pipeline.py: this must run before any registry write,
+# under every discover invocation, or the suite edits the shipped config.
+os.environ.setdefault(
+    "JB_COMPANY_REGISTRY",
+    os.path.join(tempfile.mkdtemp(prefix="jobbuddy-tests-"), "companies.json"))
+
 import gzip
 import io
 import json

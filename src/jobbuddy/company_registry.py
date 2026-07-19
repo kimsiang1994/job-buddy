@@ -37,6 +37,17 @@ from jobbuddy import job_schema, source_ats, source_workable
 REPO_DIR = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = REPO_DIR / "config" / "companies.json"
 
+# Resolved per call, not at import, so a test run can redirect it. No test
+# imports this module directly -- the pipeline reaches it several layers down --
+# so the suite was quietly writing "acme"/"test-scope" into the real shipped
+# config, where it survived until someone noticed the dirty working tree.
+_PATH_ENV = "JB_COMPANY_REGISTRY"
+
+
+def registry_path() -> Path:
+    override = os.environ.get(_PATH_ENV, "").strip()
+    return Path(override) if override else REGISTRY_PATH
+
 # How many unresolved companies to look up per run. Discovery costs two fetches
 # each and is polite-rate-limited, so this trades a slow first fortnight for a
 # search that never stalls. Raise it if you want the registry faster.
@@ -53,10 +64,11 @@ def _now() -> str:
 
 def load() -> dict[str, dict[str, Any]]:
     """company_norm -> record. Never raises."""
-    if not REGISTRY_PATH.is_file():
+    path = registry_path()
+    if not path.is_file():
         return {}
     try:
-        data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8-sig"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
         return data.get("companies", {}) if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
@@ -76,11 +88,12 @@ def save(companies: dict[str, dict[str, Any]]) -> bool:
         "companies": dict(sorted(companies.items(),
                                  key=lambda kv: -kv[1].get("seen", 0))),
     }
+    path = registry_path()
     try:
-        REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = REGISTRY_PATH.with_suffix(".tmp")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, REGISTRY_PATH)
+        os.replace(tmp, path)
         return True
     except OSError:
         return False

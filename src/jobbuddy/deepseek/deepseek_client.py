@@ -38,6 +38,11 @@ USAGE_LOG = os.path.join(REPO_DIR, "usage_log.jsonl")
 # into a very expensive call.
 RETRY_CEILING = 32768
 
+# How many times a truncated reply may double its budget. Three doublings take
+# the `extract` profile from 512 to 4096, which covers a full resume; beyond
+# that the prompt is asking for too much in one call and should be chunked.
+MAX_TRUNCATION_RETRIES = 3
+
 # Transport-level retry, distinct from the truncation retry below. Without it a
 # single 429 at eight-way concurrency loses that job outright.
 RETRY_STATUSES = frozenset({0, 408, 429, 500, 502, 503, 504})
@@ -147,10 +152,15 @@ def chat(messages, profile=token_budget.DEFAULT_PROFILE, tier="fast", model=None
         })
 
         truncated = parts["finish_reason"] == "length"
-        can_retry = (retry_on_truncation and truncated and attempts == 1
+        # Double repeatedly, not once. A single doubling recovers only when the
+        # estimate was within 2x, and resume extraction needs roughly 8x the
+        # `extract` profile's 512 -- so one retry left it truncated at 1024 and
+        # the caller saw "not a JSON object", which points at the wrong bug
+        # entirely. Bounded because each attempt is paid for.
+        can_retry = (retry_on_truncation and truncated
+                     and attempts <= MAX_TRUNCATION_RETRIES
                      and max_tokens < RETRY_CEILING)
         if can_retry:
-            # The estimate was too small -- double it once and try again.
             max_tokens = min(max_tokens * 2, RETRY_CEILING)
             retried = True
             continue
@@ -251,6 +261,17 @@ def json_chat(messages, schema_keys=(), profile="extract", tier="fast",
 
     if data is not None:
         return {**result, "data": data, "repaired": False, "error": ""}
+
+    # A reply cut off at the token ceiling is not malformed JSON, it is an
+    # incomplete answer, and no reformatting call can invent the missing half.
+    # Reporting it as a parse failure sent a real investigation after the wrong
+    # bug; naming the budget points straight at the fix.
+    if result.get("truncated"):
+        return {**result, "ok": False, "data": None, "repaired": False,
+                "error": f"reply truncated at max_tokens="
+                         f"{result.get('max_tokens')} after "
+                         f"{result.get('attempts')} attempt(s); "
+                         "raise the profile budget or split the request"}
 
     if not repair:
         return {**result, "ok": False, "data": None, "repaired": False,
