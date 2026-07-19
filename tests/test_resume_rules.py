@@ -323,6 +323,44 @@ class StructuralRules(unittest.TestCase):
                           if v.rule == "structure.no_contact_details"], [])
 
 
+class ContactDetailsAreFoundInAnyContainer(unittest.TestCase):
+    """render_resume emits a LIST; this module once handled only dict and str,
+    so real contact details produced "no contact details found" on every
+    render. A false warning teaches the reader to skim past the real ones."""
+
+    def _model(self, contact):
+        return {"name": "Alex Tan", "contact": contact,
+                "bullets": [{"text": "Automated 4 ETL processes in PySpark"}]}
+
+    def test_a_list_of_contact_details_is_accepted(self):
+        report = resume_rules.check(self._model(
+            ["alex@example.com", "+65 8000 0000"]))
+        self.assertFalse(any(v.rule == "structure.no_contact_details"
+                             for v in report.warnings))
+
+    def test_a_dict_is_still_accepted(self):
+        report = resume_rules.check(self._model(
+            {"email": "alex@example.com", "phone": "+65 8000 0000"}))
+        self.assertFalse(any(v.rule == "structure.no_contact_details"
+                             for v in report.warnings))
+
+    def test_a_bare_string_is_still_accepted(self):
+        report = resume_rules.check(self._model("alex@example.com"))
+        self.assertFalse(any(v.rule == "structure.no_contact_details"
+                             for v in report.warnings))
+
+    def test_genuinely_absent_contact_details_still_warn(self):
+        """The loosening must not disable the rule."""
+        report = resume_rules.check(self._model([]))
+        self.assertTrue(any(v.rule == "structure.no_contact_details"
+                            for v in report.warnings))
+
+    def test_a_list_of_blanks_does_not_count_as_contact(self):
+        report = resume_rules.check(self._model(["", "   "]))
+        self.assertTrue(any(v.rule == "structure.no_contact_details"
+                            for v in report.warnings))
+
+
 class MetricDensityIsACapNotATarget(unittest.TestCase):
     QUANTIFIED = [
         "Cut close from 10 to 5 days", "Automated 4 processes",
