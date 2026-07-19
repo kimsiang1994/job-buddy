@@ -1,14 +1,14 @@
 {
   "_written_by": "company_registry.py",
   "_comment": "Companies seen while searching, ranked by how often they post for each scope, plus their ATS board once resolved. Discovery is amortised across runs -- a company resolves once and then stays resolved.",
-  "companies_known": 134,
+  "companies_known": 135,
   "boards_resolved": 10,
   "companies": {
     "stripe": {
       "name": "stripe",
-      "seen": 160,
+      "seen": 171,
       "scopes": {
-        "ai-engineer-sg": 160
+        "ai-engineer-sg": 171
       },
       "is_agency": false,
       "uen": null,
@@ -17,13 +17,13 @@
       "board_token": "stripe",
       "discovered_at": "2026-07-19T10:40:09Z",
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "unison": {
       "name": "Unison Group",
-      "seen": 153,
+      "seen": 167,
       "scopes": {
-        "ai-engineer-sg": 153
+        "ai-engineer-sg": 167
       },
       "is_agency": false,
       "uen": null,
@@ -32,14 +32,14 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z",
       "discovery_attempted_at": "2026-07-19T10:51:44Z"
     },
     "airwallex": {
       "name": "airwallex",
-      "seen": 149,
+      "seen": 159,
       "scopes": {
-        "ai-engineer-sg": 149
+        "ai-engineer-sg": 159
       },
       "is_agency": false,
       "uen": null,
@@ -48,13 +48,13 @@
       "board_token": "airwallex",
       "discovered_at": "2026-07-19T10:40:09Z",
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "micron semiconductor operations": {
       "name": "MICRON SEMICONDUCTOR ASIA OPERATIONS PTE. LTD.",
-      "seen": 83,
+      "seen": 86,
       "scopes": {
-        "ai-engineer-sg": 83
+        "ai-engineer-sg": 86
       },
       "is_agency": false,
       "uen": "201815216Z",
@@ -63,13 +63,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "fuku": {
       "name": "Fuku",
-      "seen": 77,
+      "seen": 84,
       "scopes": {
-        "ai-engineer-sg": 77
+        "ai-engineer-sg": 84
       },
       "is_agency": false,
       "uen": null,
@@ -78,14 +78,14 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z",
       "discovery_attempted_at": "2026-07-19T10:51:45Z"
     },
     "regtech insight": {
       "name": "REGTECH INSIGHT PTE. LTD.",
-      "seen": 55,
+      "seen": 58,
       "scopes": {
-        "ai-engineer-sg": 55
+        "ai-engineer-sg": 58
       },
       "is_agency": false,
       "uen": "202334877C",
@@ -94,13 +94,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "uarrow": {
       "name": "UARROW PTE. LTD.",
-      "seen": 55,
+      "seen": 58,
       "scopes": {
-        "ai-engineer-sg": 55
+        "ai-engineer-sg": 58
       },
       "is_agency": false,
       "uen": "202204986Z",
@@ -109,13 +109,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "riskdata consulting": {
       "name": "RISKDATA CONSULTING PTE. LTD.",
-      "seen": 54,
+      "seen": 56,
       "scopes": {
-        "ai-engineer-sg": 54
+        "ai-engineer-sg": 56
       },
       "is_agency": false,
       "uen": "202449595E",
@@ -124,13 +124,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "unison consulting": {
       "name": "UNISON CONSULTING PTE. LTD.",
-      "seen": 50,
+      "seen": 52,
       "scopes": {
-        "ai-engineer-sg": 50
+        "ai-engineer-sg": 52
       },
       "is_agency": false,
       "uen": "201225652C",
@@ -139,7 +139,22 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
+    },
+    "assurity trusted solutions": {
+      "name": "Assurity Trusted Solutions",
+      "seen": 48,
+      "scopes": {
+        "ai-engineer-sg": 48
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": "https://www.assurity.sg/",
+      "board_vendor": "workable",
+      "board_token": "assurity-trusted-solutions",
+      "discovered_at": "2026-07-19T10:40:09Z",
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "itcan": {
       "name": "ITCAN PTE. LIMITED",
@@ -156,20 +171,20 @@
       "first_seen": "2026-07-19T10:40:09Z",
       "last_seen": "2026-07-19T10:51:29Z"
     },
-    "assurity trusted solutions": {
-      "name": "Assurity Trusted Solutions",
-      "seen": 44,
+    "okx": {
+      "name": "OKX",
+      "seen": 42,
       "scopes": {
-        "ai-engineer-sg": 44
+        "ai-engineer-sg": 42
       },
       "is_agency": false,
       "uen": null,
-      "website": "https://www.assurity.sg/",
-      "board_vendor": "workable",
-      "board_token": "assurity-trusted-solutions",
-      "discovered_at": "2026-07-19T10:40:09Z",
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "website": null,
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:56:03Z",
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "acme": {
       "name": "acme",
@@ -188,9 +203,9 @@
     },
     "activate interactive": {
       "name": "Activate Interactive Pte Ltd",
-      "seen": 33,
+      "seen": 36,
       "scopes": {
-        "ai-engineer-sg": 33
+        "ai-engineer-sg": 36
       },
       "is_agency": false,
       "uen": null,
@@ -199,14 +214,14 @@
       "board_token": "activate-interactive-pte-ltd",
       "discovered_at": "2026-07-19T10:51:51Z",
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z",
       "discovery_attempted_at": "2026-07-19T10:51:51Z"
     },
     "nanyang technological university": {
       "name": "NANYANG TECHNOLOGICAL UNIVERSITY",
-      "seen": 31,
+      "seen": 34,
       "scopes": {
-        "ai-engineer-sg": 31
+        "ai-engineer-sg": 34
       },
       "is_agency": false,
       "uen": "200604393R",
@@ -215,28 +230,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
-    },
-    "okx": {
-      "name": "OKX",
-      "seen": 28,
-      "scopes": {
-        "ai-engineer-sg": 28
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": null,
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "andtruth": {
       "name": "ANDTRUTH INTERNATIONAL PTE. LTD.",
-      "seen": 26,
+      "seen": 28,
       "scopes": {
-        "ai-engineer-sg": 26
+        "ai-engineer-sg": 28
       },
       "is_agency": true,
       "uen": "202619013C",
@@ -245,13 +245,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "persol": {
       "name": "PERSOL SINGAPORE PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "200007268E",
@@ -260,13 +260,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "grabtaxi": {
       "name": "GRABTAXI HOLDINGS PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "201316157E",
@@ -275,13 +275,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "morgan mckinley": {
       "name": "MORGAN MCKINLEY PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "200503018E",
@@ -290,13 +290,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "geco": {
       "name": "GECO ASIA PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": true,
       "uen": "200613609M",
@@ -305,13 +305,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "michael page": {
       "name": "MICHAEL PAGE INTERNATIONAL PTE LTD",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": true,
       "uen": "199804751N",
@@ -320,13 +320,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "norges bank branch": {
       "name": "NORGES BANK Singapore Branch",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "T10FC0042D",
@@ -335,13 +335,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "apar": {
       "name": "APAR TECHNOLOGIES PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "200602092H",
@@ -350,13 +350,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "wiz sea": {
       "name": "WIZ SEA TECHNOLOGY PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "202209413G",
@@ -365,13 +365,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "rapsys": {
       "name": "RAPSYS TECHNOLOGIES PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "201811049R",
@@ -380,13 +380,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "ai system integrator": {
       "name": "AI SYSTEM INTEGRATOR ASIA PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "202449227N",
@@ -395,13 +395,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "sap": {
       "name": "SAP ASIA PTE. LTD.",
-      "seen": 25,
+      "seen": 26,
       "scopes": {
-        "ai-engineer-sg": 25
+        "ai-engineer-sg": 26
       },
       "is_agency": false,
       "uen": "198902722M",
@@ -410,13 +410,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "xora innovation": {
       "name": "Xora Innovation",
-      "seen": 22,
+      "seen": 24,
       "scopes": {
-        "ai-engineer-sg": 22
+        "ai-engineer-sg": 24
       },
       "is_agency": false,
       "uen": null,
@@ -425,14 +425,14 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z",
       "discovery_attempted_at": "2026-07-19T10:51:51Z"
     },
     "xcellink": {
       "name": "Xcellink Pte Ltd",
-      "seen": 22,
+      "seen": 24,
       "scopes": {
-        "ai-engineer-sg": 22
+        "ai-engineer-sg": 24
       },
       "is_agency": false,
       "uen": null,
@@ -441,14 +441,14 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z",
       "discovery_attempted_at": "2026-07-19T10:51:52Z"
     },
     "tomoro": {
       "name": "Tomoro",
-      "seen": 22,
+      "seen": 24,
       "scopes": {
-        "ai-engineer-sg": 22
+        "ai-engineer-sg": 24
       },
       "is_agency": false,
       "uen": null,
@@ -457,14 +457,14 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z",
       "discovery_attempted_at": "2026-07-19T10:52:07Z"
     },
     "matrix process automation": {
       "name": "MATRIX PROCESS AUTOMATION PTE. LTD.",
-      "seen": 21,
+      "seen": 22,
       "scopes": {
-        "ai-engineer-sg": 21
+        "ai-engineer-sg": 22
       },
       "is_agency": false,
       "uen": "202006290K",
@@ -473,13 +473,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "omnivision": {
       "name": "OMNIVISION TECHNOLOGIES SINGAPORE PTE. LTD.",
-      "seen": 21,
+      "seen": 22,
       "scopes": {
-        "ai-engineer-sg": 21
+        "ai-engineer-sg": 22
       },
       "is_agency": false,
       "uen": "201207875E",
@@ -488,13 +488,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "nicoll curtin": {
       "name": "NICOLL CURTIN TECHNOLOGY PTE. LTD.",
-      "seen": 21,
+      "seen": 22,
       "scopes": {
-        "ai-engineer-sg": 21
+        "ai-engineer-sg": 22
       },
       "is_agency": false,
       "uen": "201103389Z",
@@ -503,13 +503,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "abeam consulting": {
       "name": "ABEAM CONSULTING (SINGAPORE) PTE. LTD.",
-      "seen": 21,
+      "seen": 22,
       "scopes": {
-        "ai-engineer-sg": 21
+        "ai-engineer-sg": 22
       },
       "is_agency": false,
       "uen": "200503476W",
@@ -518,13 +518,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "ernst & young advisory": {
       "name": "ERNST & YOUNG ADVISORY PTE. LTD.",
-      "seen": 21,
+      "seen": 22,
       "scopes": {
-        "ai-engineer-sg": 21
+        "ai-engineer-sg": 22
       },
       "is_agency": false,
       "uen": "198905395E",
@@ -533,13 +533,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "mmd": {
       "name": "MMD SINGAPORE PTE. LTD.",
-      "seen": 21,
+      "seen": 22,
       "scopes": {
-        "ai-engineer-sg": 21
+        "ai-engineer-sg": 22
       },
       "is_agency": false,
       "uen": "200822460K",
@@ -548,7 +548,7 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "flintex consulting": {
       "name": "FLINTEX CONSULTING PTE. LTD.",
@@ -567,9 +567,9 @@
     },
     "ocbc": {
       "name": "ocbc",
-      "seen": 15,
+      "seen": 18,
       "scopes": {
-        "ai-engineer-sg": 15
+        "ai-engineer-sg": 18
       },
       "is_agency": false,
       "uen": null,
@@ -578,13 +578,13 @@
       "board_token": "ocbc|wd102|External",
       "discovered_at": "2026-07-19T10:40:09Z",
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "mindrift": {
       "name": "Mindrift",
-      "seen": 14,
+      "seen": 15,
       "scopes": {
-        "ai-engineer-sg": 14
+        "ai-engineer-sg": 15
       },
       "is_agency": false,
       "uen": null,
@@ -593,14 +593,14 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z",
       "discovery_attempted_at": "2026-07-19T10:52:08Z"
     },
     "rapsodo": {
       "name": "Rapsodo",
-      "seen": 13,
+      "seen": 15,
       "scopes": {
-        "ai-engineer-sg": 13
+        "ai-engineer-sg": 15
       },
       "is_agency": false,
       "uen": null,
@@ -609,8 +609,165 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z",
       "discovery_attempted_at": "2026-07-19T10:52:25Z"
+    },
+    "chaingpt": {
+      "name": "ChainGPT",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": "https://www.chaingpt.org/",
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z",
+      "discovery_attempted_at": "2026-07-19T10:52:11Z"
+    },
+    "botsync": {
+      "name": "Botsync",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": "https://www.botsync.co/",
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z",
+      "discovery_attempted_at": "2026-07-19T10:52:40Z"
+    },
+    "mlabs": {
+      "name": "MLabs",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": "https://mlabs.city",
+      "board_vendor": "workable",
+      "board_token": "mlabs",
+      "discovered_at": "2026-07-19T10:56:05Z",
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z",
+      "discovery_attempted_at": "2026-07-19T10:56:05Z"
+    },
+    "nus enterprise": {
+      "name": "NUS Enterprise",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": "http://nus.edu.sg",
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z",
+      "discovery_attempted_at": "2026-07-19T10:56:08Z"
+    },
+    "xtremax": {
+      "name": "Xtremax Pte. Ltd.",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": "http://www.xtremax.com",
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z",
+      "discovery_attempted_at": "2026-07-19T10:56:09Z"
+    },
+    "shield": {
+      "name": "SHIELD",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": "https://shield.com/",
+      "board_vendor": "workable",
+      "board_token": "shield-1",
+      "discovered_at": "2026-07-19T10:56:10Z",
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z",
+      "discovery_attempted_at": "2026-07-19T10:56:10Z"
+    },
+    "infosys & australia": {
+      "name": "Infosys Singapore & Australia",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": "http://www.infosysconsulting.com",
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z",
+      "discovery_attempted_at": "2026-07-19T10:56:11Z"
+    },
+    "circles": {
+      "name": "circles",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": null,
+      "board_vendor": "workday",
+      "board_token": "circles|wd103|Circles",
+      "discovered_at": "2026-07-19T10:40:09Z",
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z"
+    },
+    "nium": {
+      "name": "nium",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": null,
+      "board_vendor": "lever",
+      "board_token": "nium",
+      "discovered_at": "2026-07-19T10:40:09Z",
+      "first_seen": "2026-07-19T10:40:09Z",
+      "last_seen": "2026-07-19T11:05:23Z"
+    },
+    "drw": {
+      "name": "Drw",
+      "seen": 12,
+      "scopes": {
+        "ai-engineer-sg": 12
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": null,
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:56:03Z",
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "allegis": {
       "name": "ALLEGIS GROUP SINGAPORE PRIVATE LIMITED",
@@ -642,147 +799,20 @@
       "first_seen": "2026-07-19T10:40:09Z",
       "last_seen": "2026-07-19T10:51:29Z"
     },
-    "chaingpt": {
-      "name": "ChainGPT",
-      "seen": 11,
+    "mastercard": {
+      "name": "Mastercard",
+      "seen": 9,
       "scopes": {
-        "ai-engineer-sg": 11
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": "https://www.chaingpt.org/",
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
-      "discovery_attempted_at": "2026-07-19T10:52:11Z"
-    },
-    "botsync": {
-      "name": "Botsync",
-      "seen": 11,
-      "scopes": {
-        "ai-engineer-sg": 11
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": "https://www.botsync.co/",
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
-      "discovery_attempted_at": "2026-07-19T10:52:40Z"
-    },
-    "mlabs": {
-      "name": "MLabs",
-      "seen": 11,
-      "scopes": {
-        "ai-engineer-sg": 11
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": "https://mlabs.city",
-      "board_vendor": "workable",
-      "board_token": "mlabs",
-      "discovered_at": "2026-07-19T10:56:05Z",
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
-      "discovery_attempted_at": "2026-07-19T10:56:05Z"
-    },
-    "nus enterprise": {
-      "name": "NUS Enterprise",
-      "seen": 11,
-      "scopes": {
-        "ai-engineer-sg": 11
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": "http://nus.edu.sg",
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
-      "discovery_attempted_at": "2026-07-19T10:56:08Z"
-    },
-    "xtremax": {
-      "name": "Xtremax Pte. Ltd.",
-      "seen": 11,
-      "scopes": {
-        "ai-engineer-sg": 11
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": "http://www.xtremax.com",
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
-      "discovery_attempted_at": "2026-07-19T10:56:09Z"
-    },
-    "shield": {
-      "name": "SHIELD",
-      "seen": 11,
-      "scopes": {
-        "ai-engineer-sg": 11
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": "https://shield.com/",
-      "board_vendor": "workable",
-      "board_token": "shield-1",
-      "discovered_at": "2026-07-19T10:56:10Z",
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
-      "discovery_attempted_at": "2026-07-19T10:56:10Z"
-    },
-    "infosys & australia": {
-      "name": "Infosys Singapore & Australia",
-      "seen": 11,
-      "scopes": {
-        "ai-engineer-sg": 11
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": "http://www.infosysconsulting.com",
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z",
-      "discovery_attempted_at": "2026-07-19T10:56:11Z"
-    },
-    "circles": {
-      "name": "circles",
-      "seen": 10,
-      "scopes": {
-        "ai-engineer-sg": 10
+        "ai-engineer-sg": 9
       },
       "is_agency": false,
       "uen": null,
       "website": null,
-      "board_vendor": "workday",
-      "board_token": "circles|wd103|Circles",
-      "discovered_at": "2026-07-19T10:40:09Z",
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
-    },
-    "nium": {
-      "name": "nium",
-      "seen": 10,
-      "scopes": {
-        "ai-engineer-sg": 10
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": null,
-      "board_vendor": "lever",
-      "board_token": "nium",
-      "discovered_at": "2026-07-19T10:40:09Z",
-      "first_seen": "2026-07-19T10:40:09Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:56:03Z",
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "medicoder": {
       "name": "MEDICODER PTE. LTD.",
@@ -934,11 +964,11 @@
       "first_seen": "2026-07-19T10:40:09Z",
       "last_seen": "2026-07-19T10:40:51Z"
     },
-    "drw": {
-      "name": "Drw",
-      "seen": 8,
+    "crypto com": {
+      "name": "Crypto Com",
+      "seen": 7,
       "scopes": {
-        "ai-engineer-sg": 8
+        "ai-engineer-sg": 7
       },
       "is_agency": false,
       "uen": null,
@@ -947,7 +977,7 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "coda": {
       "name": "coda",
@@ -964,8 +994,8 @@
       "first_seen": "2026-07-19T10:40:09Z",
       "last_seen": "2026-07-19T10:40:51Z"
     },
-    "mastercard": {
-      "name": "Mastercard",
+    "feedzai": {
+      "name": "Feedzai",
       "seen": 6,
       "scopes": {
         "ai-engineer-sg": 6
@@ -977,7 +1007,37 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
+    },
+    "coinhako": {
+      "name": "Coinhako",
+      "seen": 6,
+      "scopes": {
+        "ai-engineer-sg": 6
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": null,
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:56:03Z",
+      "last_seen": "2026-07-19T11:05:23Z"
+    },
+    "lancesoft apac": {
+      "name": "Lancesoft APAC",
+      "seen": 6,
+      "scopes": {
+        "ai-engineer-sg": 6
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": null,
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T10:56:03Z",
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "cantina research": {
       "name": "CANTINA RESEARCH SINGAPORE PTE. LTD.",
@@ -1609,65 +1669,20 @@
       "first_seen": "2026-07-19T10:40:09Z",
       "last_seen": "2026-07-19T10:40:51Z"
     },
-    "crypto com": {
-      "name": "Crypto Com",
+    "jac recruitment": {
+      "name": "JAC Recruitment Singapore",
       "seen": 4,
       "scopes": {
         "ai-engineer-sg": 4
       },
-      "is_agency": false,
+      "is_agency": true,
       "uen": null,
       "website": null,
       "board_vendor": null,
       "board_token": null,
       "discovered_at": null,
-      "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
-    },
-    "feedzai": {
-      "name": "Feedzai",
-      "seen": 4,
-      "scopes": {
-        "ai-engineer-sg": 4
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": null,
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
-    },
-    "coinhako": {
-      "name": "Coinhako",
-      "seen": 4,
-      "scopes": {
-        "ai-engineer-sg": 4
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": null,
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
-    },
-    "lancesoft apac": {
-      "name": "Lancesoft APAC",
-      "seen": 4,
-      "scopes": {
-        "ai-engineer-sg": 4
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": null,
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "first_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "substance level up by substance": {
       "name": "Substance | Level Up by Substance",
@@ -1687,9 +1702,9 @@
     },
     "tilt": {
       "name": "Tilt",
-      "seen": 2,
+      "seen": 3,
       "scopes": {
-        "ai-engineer-sg": 2
+        "ai-engineer-sg": 3
       },
       "is_agency": false,
       "uen": null,
@@ -1698,13 +1713,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "armada": {
       "name": "Armada",
-      "seen": 2,
+      "seen": 3,
       "scopes": {
-        "ai-engineer-sg": 2
+        "ai-engineer-sg": 3
       },
       "is_agency": false,
       "uen": null,
@@ -1713,13 +1728,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "cboe digital": {
       "name": "Cboe Digital",
-      "seen": 2,
+      "seen": 3,
       "scopes": {
-        "ai-engineer-sg": 2
+        "ai-engineer-sg": 3
       },
       "is_agency": false,
       "uen": null,
@@ -1728,13 +1743,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "inland valley daily bulletin": {
       "name": "Inland Valley Daily Bulletin",
-      "seen": 2,
+      "seen": 3,
       "scopes": {
-        "ai-engineer-sg": 2
+        "ai-engineer-sg": 3
       },
       "is_agency": false,
       "uen": null,
@@ -1743,13 +1758,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "talos": {
       "name": "Talos",
-      "seen": 2,
+      "seen": 3,
       "scopes": {
-        "ai-engineer-sg": 2
+        "ai-engineer-sg": 3
       },
       "is_agency": false,
       "uen": null,
@@ -1758,10 +1773,25 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T10:56:03Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
-    "jac recruitment": {
-      "name": "JAC Recruitment Singapore",
+    "systems for business": {
+      "name": "Systems For Business",
+      "seen": 2,
+      "scopes": {
+        "ai-engineer-sg": 2
+      },
+      "is_agency": false,
+      "uen": null,
+      "website": null,
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T11:00:34Z",
+      "last_seen": "2026-07-19T11:05:23Z"
+    },
+    "achieve career consultant": {
+      "name": "ACHIEVE CAREER CONSULTANT PTE LTD",
       "seen": 2,
       "scopes": {
         "ai-engineer-sg": 2
@@ -1773,43 +1803,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
-    },
-    "systems for business": {
-      "name": "Systems For Business",
-      "seen": 1,
-      "scopes": {
-        "ai-engineer-sg": 1
-      },
-      "is_agency": false,
-      "uen": null,
-      "website": null,
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
-    },
-    "achieve career consultant": {
-      "name": "ACHIEVE CAREER CONSULTANT PTE LTD",
-      "seen": 1,
-      "scopes": {
-        "ai-engineer-sg": 1
-      },
-      "is_agency": true,
-      "uen": null,
-      "website": null,
-      "board_vendor": null,
-      "board_token": null,
-      "discovered_at": null,
-      "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "ethos beathchapman": {
       "name": "Ethos BeathChapman",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1818,13 +1818,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "base camp digital": {
       "name": "Base Camp Digital",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1833,13 +1833,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "meta": {
       "name": "Meta",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1848,13 +1848,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "talentsis": {
       "name": "TALENTSIS PTE. LTD.",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": true,
       "uen": null,
@@ -1863,13 +1863,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "basecamp digital": {
       "name": "BaseCamp Digital",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1878,13 +1878,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "wearetechwomen": {
       "name": "WeAreTechWomen",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1893,13 +1893,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "achieve": {
       "name": "Achieve Group",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1908,13 +1908,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "htx home team science & agency": {
       "name": "HTX (Home Team Science & Technology Agency)",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1923,13 +1923,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "home team science and agency htx": {
       "name": "Home Team Science and Technology Agency (HTX)",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1938,13 +1938,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "patsnap": {
       "name": "PatSnap",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1953,13 +1953,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "micron": {
       "name": "Micron Technology",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1968,13 +1968,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "immortal dragons": {
       "name": "IMMORTAL DRAGONS PRIVATE LIMITED",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1983,13 +1983,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "government agency": {
       "name": "Government Technology Agency",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -1998,13 +1998,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "keysight sales": {
       "name": "Keysight Technologies Singapore (Sales) Pte. Ltd....-",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -2013,13 +2013,13 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
     },
     "synaxg": {
       "name": "SYNAXG TECHNOLOGIES PTE. LTD.",
-      "seen": 1,
+      "seen": 2,
       "scopes": {
-        "ai-engineer-sg": 1
+        "ai-engineer-sg": 2
       },
       "is_agency": false,
       "uen": null,
@@ -2028,7 +2028,22 @@
       "board_token": null,
       "discovered_at": null,
       "first_seen": "2026-07-19T11:00:34Z",
-      "last_seen": "2026-07-19T11:00:34Z"
+      "last_seen": "2026-07-19T11:05:23Z"
+    },
+    "fragment works": {
+      "name": "FRAGMENT WORKS PTE. LTD.",
+      "seen": 1,
+      "scopes": {
+        "ai-engineer-sg": 1
+      },
+      "is_agency": false,
+      "uen": "202618255G",
+      "website": null,
+      "board_vendor": null,
+      "board_token": null,
+      "discovered_at": null,
+      "first_seen": "2026-07-19T11:05:23Z",
+      "last_seen": "2026-07-19T11:05:23Z"
     }
   }
 }

@@ -6,7 +6,7 @@
     "_comment": "Hard filters run BEFORE scoring and before anything costs money. A job that fails one is excluded with a reason, never ranked low.",
     "singapore_only": true,
     "open_only": true,
-    "min_salary_sgd_monthly": 8000,
+    "min_salary_sgd_monthly": 7200,
     "allow_unstated_salary": true,
     "max_seniority_gap_below": 2,
     "exclude_companies": [
@@ -63,7 +63,7 @@
     "_comment": "Deterministic matching inputs only. The full verified fact store lives in profile/master_profile.json and is built later by import_resume.py.",
     "target_seniority": "senior",
     "years_experience": 5,
-    "current_salary_sgd_monthly": null,
+    "current_salary_sgd_monthly": 8000,
     "_skills_comment": "Only skills the resume actually evidences. Adding one you cannot defend in an interview corrupts every downstream score, and later would let the tailoring stage cite it. Tiers: expert = led or built it; working = used it in production; familiar = have touched it.",
     "skills": {
       "expert": [
