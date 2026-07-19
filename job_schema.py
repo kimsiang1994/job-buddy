@@ -147,6 +147,18 @@ def normalise_seniority(*hints: Any) -> str | None:
     return None
 
 
+def step_up(level: str | None, steps: int = 1) -> str | None:
+    """The level `steps` above `level`, clamped to the top of the ladder.
+
+    Job searches are aspirational. Someone at mid is looking for senior, so the
+    thing being matched against is the level they want, not the one they hold.
+    """
+    if level not in SENIORITY_LADDER:
+        return None
+    index = min(SENIORITY_LADDER.index(level) + steps, len(SENIORITY_LADDER) - 1)
+    return SENIORITY_LADDER[index]
+
+
 def seniority_from_years(years: Any) -> str | None:
     """Infer a level from required years of experience.
 

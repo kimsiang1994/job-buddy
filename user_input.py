@@ -20,6 +20,17 @@ extraction that builds the verified fact store is a separate, later step.
 
 **Sole writer of intake/.** That directory is gitignored -- it holds a real
 name, phone number and salary expectations, and this repo is public.
+
+## Confidential fields
+
+Salary is the most sensitive thing here. It is used only for local arithmetic --
+comparing a listing's range against your position -- and it must never be sent
+anywhere. `redact_for_llm()` strips it, along with every other direct
+identifier, and `test_pipeline.py` asserts that. Use it for anything crossing
+the process boundary: an API call, a log line, a shared file.
+
+The salary never needs to leave this machine. Scoring turns it into a ratio
+before anything else sees it, and a ratio is not a salary.
 """
 
 from __future__ import annotations
@@ -373,6 +384,9 @@ class IntakeProfile:
     years_experience: float | None = None
     current_seniority: str | None = None
     target_seniority: str | None = None
+    # How far up the ladder to aim, relative to current. 0 = same level,
+    # 1 = the usual next step, 2 = a deliberate stretch.
+    seniority_ambition: int = 1
 
     current_salary_sgd_monthly: int | None = None
     desired_salary_sgd_monthly: int | None = None
@@ -450,7 +464,6 @@ def build_profile(
         profile.current_seniority, seniority_basis = derive_seniority(
             profile.resume_text, years
         )
-        profile.target_seniority = profile.current_seniority
         profile.derived["current_seniority"] = seniority_basis
 
     # Explicit values win over everything derived.
@@ -462,6 +475,19 @@ def build_profile(
             continue
         setattr(profile, key, value)
         profile.derived.pop(key, None)
+
+    # Aim one level up unless told otherwise. Nobody runs a job search to move
+    # sideways -- the point is better pay, better rank, or both. Defaulting the
+    # target to the current level made the scorer rank staying-put roles top.
+    if not profile.target_seniority and profile.current_seniority:
+        import job_schema
+
+        stepped = job_schema.step_up(profile.current_seniority, profile.seniority_ambition)
+        profile.target_seniority = stepped or profile.current_seniority
+        profile.derived["target_seniority"] = (
+            f"{profile.current_seniority} + {profile.seniority_ambition} "
+            f"= {profile.target_seniority} (aiming up; set it yourself to change)"
+        )
 
     # A salary floor the user did not set: 90% of current pay, so the search is
     # not cluttered with roles that would be a pay cut.
@@ -529,9 +555,11 @@ def warnings_for(profile: IntakeProfile) -> list[str]:
     basis = str(profile.derived.get("current_seniority", ""))
     if basis.startswith("inferred from"):
         notes.append(
-            f"seniority was inferred as {profile.current_seniority!r} from tenure alone, "
-            "because no job title on the resume carries a level word. Titles like "
-            "'AI Engineer' say nothing about level -- set target_seniority yourself"
+            f"current level read as {profile.current_seniority!r} from tenure alone, "
+            "because no job title on the resume carries a level word ('AI Engineer' "
+            f"says nothing about level). You are being matched against "
+            f"{profile.target_seniority!r} -- adjust Ambition, or set the level "
+            "exactly, if that is off"
         )
     if not profile.derived.get("years_experience", {}).get(
             "read_experience_section_only", True):
@@ -653,6 +681,62 @@ def submission_history(limit: int = 20) -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------
+# Confidentiality
+# --------------------------------------------------------------------------
+
+# Never leaves this machine. Salary is the obvious one, but a phone number or
+# home address in a prompt is just as bad, and prompts get logged by providers.
+CONFIDENTIAL_FIELDS = frozenset({
+    "current_salary_sgd_monthly",
+    "desired_salary_sgd_monthly",
+    "min_salary_sgd_monthly",
+    "phone",
+    "email",
+    "linkedin",
+    "github",
+    "notes",
+})
+
+# Kept, because tailoring genuinely needs them. `full_name` is on the resume
+# being written anyway; the rest are job-matching inputs, not identifiers.
+LLM_SAFE_FIELDS = frozenset({
+    "full_name", "target_roles", "years_experience", "current_seniority",
+    "target_seniority", "location", "open_to_remote", "work_authorization",
+    "skills",
+})
+
+
+def redact_for_llm(profile: "IntakeProfile | dict[str, Any]") -> dict[str, Any]:
+    """The subset of a profile that may cross the process boundary.
+
+    Allowlist, not denylist. A new confidential field added to the dataclass is
+    excluded by default rather than leaking until someone remembers to add it
+    to a blocklist -- the failure mode of a denylist is silent and permanent,
+    because prompts are retained by providers.
+
+    Salary is deliberately absent. Pay scoring happens locally and produces a
+    ratio; a ratio is not a salary, and the ratio is all any downstream stage
+    needs.
+    """
+    data = profile if isinstance(profile, dict) else profile.to_dict()
+    return {key: value for key, value in data.items() if key in LLM_SAFE_FIELDS}
+
+
+def confidentiality_report(profile: "IntakeProfile") -> list[str]:
+    """Plain statement of what is stored and what can leave. For the notebook."""
+    stored = [f for f in sorted(CONFIDENTIAL_FIELDS)
+              if getattr(profile, f, None) not in (None, "", [], 0)]
+    lines = [
+        f"stored locally in {INTAKE_DIR.name}/ (gitignored, never committed)",
+    ]
+    if stored:
+        lines.append(f"confidential fields held: {', '.join(stored)}")
+    lines.append("none of the above is sent to any API -- salary is converted "
+                 "to a ratio locally and only the ratio is used")
+    return lines
+
+
+# --------------------------------------------------------------------------
 # Handing off to the pipeline
 # --------------------------------------------------------------------------
 
@@ -682,6 +766,7 @@ def to_run_config(profile: IntakeProfile, base: dict[str, Any] | None = None) ->
 
     target = config["profile"]
     target["target_seniority"] = profile.target_seniority or profile.current_seniority
+    target["current_seniority"] = profile.current_seniority
     target["years_experience"] = profile.years_experience
     target["current_salary_sgd_monthly"] = profile.current_salary_sgd_monthly
     existing = target.get("skills") or {}

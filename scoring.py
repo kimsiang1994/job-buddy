@@ -132,10 +132,16 @@ def score_skill_match(job: dict[str, Any], profile: dict[str, Any]) -> tuple[flo
 
 
 def score_seniority_fit(job: dict[str, Any], profile: dict[str, Any]) -> tuple[float | None, dict]:
-    """How well the job's level matches the profile's.
+    """How well the job's level matches what the candidate is aiming for.
 
-    Asymmetric on purpose. Being one level under-levelled is a pay cut but you
-    will get the interview; being two levels over-reaching mostly gets silence.
+    Scored against `target_seniority` -- the level they WANT -- not the one they
+    currently hold. That distinction matters: defaulting the target to the
+    current level made the scorer rank staying-put roles top and stretch roles
+    35 points lower, which is the opposite of why anyone runs a job search.
+
+    Asymmetric, but now tilted toward the stretch. Reaching one level above
+    target is a live application; dropping one below is a step backwards that
+    only pay can justify, and pay is scored separately.
     """
     target = profile.get("target_seniority")
     level = job.get("seniority")
@@ -148,10 +154,10 @@ def score_seniority_fit(job: dict[str, Any], profile: dict[str, Any]) -> tuple[f
 
     if gap == 0:
         score = 100.0
-    elif gap > 0:            # job is more senior than the profile
-        score = max(0.0, 100.0 - 35.0 * gap)
-    else:                    # job is more junior -- less risky, still a downgrade
-        score = max(0.0, 100.0 - 22.0 * abs(gap))
+    elif gap > 0:            # above target: a reach, and reaching is the point
+        score = max(0.0, 100.0 - 25.0 * gap)
+    else:                    # below target: safe, but it is why you would not move
+        score = max(0.0, 100.0 - 32.0 * abs(gap))
 
     # An inference from a dropdown is weaker evidence than one from the title,
     # so pull a weak basis toward neutral rather than trusting it fully.
@@ -172,7 +178,11 @@ def score_seniority_fit(job: dict[str, Any], profile: dict[str, Any]) -> tuple[f
 
     return score, {
         "job_level": level, "target_level": target, "gap": gap,
+        "current_level": profile.get("current_seniority"),
         "basis": basis, "years": years_note,
+        "direction": ("at target" if gap == 0
+                      else f"{gap} level(s) above target"
+                      if gap > 0 else f"{abs(gap)} level(s) below target"),
     }
 
 

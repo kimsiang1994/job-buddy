@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import unittest
 
+import json
 import job_schema
 import job_store
 import scoring
@@ -666,6 +667,140 @@ Stack: Python, PySpark, SQL, AWS, Docker, Kubernetes
         text, how = user_input.read_resume_text("resume.pages")
         self.assertEqual(text, "")
         self.assertIn("unsupported", how)
+
+
+class SeniorityAmbition(unittest.TestCase):
+    """A job search aims up. Scoring must reflect that.
+
+    Defaulting target_seniority to the current level made staying-put roles
+    score 100 and the stretch roles the user actually wants score 65 -- exactly
+    backwards.
+    """
+
+    def test_target_defaults_one_level_above_current(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cv.txt"
+            path.write_text(ResumeDerivation.RESUME, encoding="utf-8")
+            profile = user_input.build_profile(
+                full_name="A", resume_path=path, target_roles="AI Engineer",
+            )
+        self.assertIsNotNone(profile.target_seniority)
+        gap = job_schema.seniority_distance(
+            profile.current_seniority, profile.target_seniority
+        )
+        self.assertEqual(gap, 1, "target should sit one level above current")
+
+    def test_ambition_zero_targets_current_level(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cv.txt"
+            path.write_text(ResumeDerivation.RESUME, encoding="utf-8")
+            profile = user_input.build_profile(
+                full_name="A", resume_path=path, target_roles="AI Engineer",
+                seniority_ambition=0,
+            )
+        self.assertEqual(profile.target_seniority, profile.current_seniority)
+
+    def test_step_up_clamps_at_top_of_ladder(self):
+        self.assertEqual(job_schema.step_up("executive", 3), "executive")
+        self.assertIsNone(job_schema.step_up(None))
+
+    def test_stretch_role_outranks_staying_put(self):
+        """A mid-level candidate should see senior roles above mid roles."""
+        config = dict(Scoring.CONFIG)
+        config["profile"] = dict(config["profile"],
+                                 current_seniority="mid", target_seniority="senior")
+
+        def at(level):
+            job = Scoring._job(Scoring(), seniority=level, seniority_basis="title")
+            return scoring.score_seniority_fit(job, config["profile"])[0]
+
+        self.assertGreater(at("senior"), at("mid"))
+        self.assertGreater(at("lead"), at("junior"))
+
+    def test_reaching_up_beats_dropping_down_by_the_same_distance(self):
+        """One level above target must outrank one level below it.
+
+        The penalties were first written the wrong way round -- the comment
+        said 'tilted toward the stretch' while the numbers scored the
+        staying-put level higher. Job searches are for better pay or better
+        rank; a safe sideways move is the thing being moved away from.
+        """
+        config = dict(Scoring.CONFIG)
+        config["profile"] = dict(config["profile"],
+                                 current_seniority="mid", target_seniority="senior")
+
+        def at(level):
+            job = Scoring._job(Scoring(), seniority=level, seniority_basis="title")
+            return scoring.score_seniority_fit(job, config["profile"])[0]
+
+        self.assertGreater(at("lead"), at("mid"),
+                           "one level above target should beat one level below")
+
+
+class Confidentiality(unittest.TestCase):
+    """Salary must never cross the process boundary.
+
+    Prompts are retained by providers, so a leak here is permanent.
+    """
+
+    PROFILE = user_input.IntakeProfile(
+        full_name="Alex Example",
+        resume_path="cv.pdf",
+        target_roles=["AI Engineer"],
+        email="person@example.com",
+        phone="+65 8000 1234",
+        linkedin="https://www.linkedin.com/in/alex-example-00000000",
+        current_salary_sgd_monthly=12000,
+        desired_salary_sgd_monthly=16000,
+        min_salary_sgd_monthly=10800,
+        notes="leaving because of my manager",
+        skills=["python", "llm"],
+        years_experience=4.9,
+    )
+
+    def test_no_salary_field_survives_redaction(self):
+        safe = user_input.redact_for_llm(self.PROFILE)
+        for field_name in ("current_salary_sgd_monthly", "desired_salary_sgd_monthly",
+                           "min_salary_sgd_monthly"):
+            self.assertNotIn(field_name, safe)
+
+    def test_no_salary_VALUE_appears_anywhere_in_the_payload(self):
+        """Field names are not enough -- check the serialised values too."""
+        blob = json.dumps(user_input.redact_for_llm(self.PROFILE))
+        for secret in ("12000", "16000", "10800"):
+            self.assertNotIn(secret, blob, f"salary {secret} leaked into payload")
+
+    def test_direct_identifiers_are_stripped(self):
+        blob = json.dumps(user_input.redact_for_llm(self.PROFILE))
+        for secret in ("8000 1234", "person@example.com", "linkedin.com",
+                       "because of my manager"):
+            self.assertNotIn(secret, blob, f"{secret!r} leaked into payload")
+
+    def test_matching_inputs_are_kept(self):
+        safe = user_input.redact_for_llm(self.PROFILE)
+        self.assertEqual(safe["target_seniority"], self.PROFILE.target_seniority)
+        self.assertIn("python", safe["skills"])
+        self.assertEqual(safe["years_experience"], 4.9)
+
+    def test_redaction_is_an_allowlist_not_a_blocklist(self):
+        """A newly added confidential field must be excluded by default.
+
+        With a blocklist, forgetting to update it leaks silently and forever.
+        """
+        payload = dict(self.PROFILE.to_dict())
+        payload["bank_account_number"] = "123-456-789"
+        safe = user_input.redact_for_llm(payload)
+        self.assertNotIn("bank_account_number", safe)
+
+    def test_every_confidential_field_is_outside_the_allowlist(self):
+        overlap = user_input.CONFIDENTIAL_FIELDS & user_input.LLM_SAFE_FIELDS
+        self.assertEqual(overlap, set(), f"contradictory classification: {overlap}")
 
 
 class Validation(unittest.TestCase):
