@@ -396,11 +396,7 @@ def document_text(model: Any) -> str:
         value = data.get(key)
         if isinstance(value, str) and value.strip():
             parts.append(value)
-    contact = data.get("contact")
-    if isinstance(contact, dict):
-        parts.extend(str(v) for v in contact.values() if v)
-    elif isinstance(contact, str):
-        parts.append(contact)
+    parts.extend(_contact_values(data.get("contact")))
     parts.extend(_sections(model))
     for bullet in _bullets(model):
         for key in ("role", "org"):
@@ -724,6 +720,24 @@ def _check_titles(model: Any) -> list[Violation]:
     return violations
 
 
+def _contact_values(contact: Any) -> list[str]:
+    """Contact details, whatever container they arrived in.
+
+    `render_resume.build_model` emits a LIST; this module originally handled
+    only a dict and a string, so a perfectly good set of contact details was
+    invisible and every render raised "no contact details found". A false
+    warning is worse than a missing rule, because it teaches the reader to
+    skim past the warnings that are real.
+    """
+    if isinstance(contact, dict):
+        return [str(v) for v in contact.values() if str(v).strip()]
+    if isinstance(contact, (list, tuple, set)):
+        return [str(v) for v in contact if str(v).strip()]
+    if isinstance(contact, str) and contact.strip():
+        return [contact]
+    return []
+
+
 def _check_contact(model: Any, text: str) -> list[Violation]:
     """Contact details must be in the document BODY.
 
@@ -735,8 +749,7 @@ def _check_contact(model: Any, text: str) -> list[Violation]:
     errors are reserved for harms that cannot be undone after sending. Missing
     contact details are obvious to the user the moment they look at the page.
     """
-    contact = _as_dict(model).get("contact")
-    if isinstance(contact, dict) and any(str(v).strip() for v in contact.values()):
+    if any(str(v).strip() for v in _contact_values(_as_dict(model).get("contact"))):
         return []
     has_email = re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", text)
     has_phone = re.search(r"(?:\+\d{1,3}[\s-]?)?(?:\d[\s-]?){7,}\d", text)
