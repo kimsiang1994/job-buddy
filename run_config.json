@@ -144,7 +144,9 @@
     "enabled": [
       "mcf",
       "workable",
-      "ats"
+      "ats",
+      "partner",
+      "aggregator"
     ],
     "available": [
       "mcf",

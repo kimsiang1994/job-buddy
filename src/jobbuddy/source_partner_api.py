@@ -36,10 +36,14 @@ import re
 import urllib.parse
 from typing import Any
 
-from jobbuddy import html_text, job_schema, net
+from jobbuddy import html_text, job_schema, net, quota
 
 CAREERJET_URL = "http://public.api.careerjet.net/search"
-JOOBLE_URL = "https://sg.jooble.org/api"
+# The apex domain, NOT sg.jooble.org. The country subdomains serve the consumer
+# site and return 403 HTML to an API call; the country is selected by the
+# `location` field in the request body instead. Verified: jooble.org returns
+# 144 Singapore results for the same query that sg.jooble.org refuses.
+JOOBLE_URL = "https://jooble.org/api"
 
 # Careerjet wants a caller identity; sending a real one is both required by
 # their docs and the polite thing to do.
@@ -77,7 +81,12 @@ def _careerjet_records(query: str, max_results: int,
             "user_agent": CAREERJET_AGENT,
             "sort": "date",
         })
+        if not quota.can_spend("careerjet"):
+            net._warn("careerjet: monthly budget spent; skipping")
+            break
         data, result = net.get_json(f"{CAREERJET_URL}?{params}", cache_ttl_s=cache_ttl_s)
+        if not result.from_cache:
+            quota.spend("careerjet")
         if not result.ok or not isinstance(data, dict):
             net._warn(f"careerjet: page {page} failed ({result.error})")
             break
@@ -167,11 +176,16 @@ def _jooble_records(query: str, max_results: int,
     records: list[dict[str, Any]] = []
     pages = max(1, min(3, (max_results // 20) + 1))
     for page in range(1, pages + 1):
+        if not quota.can_spend("jooble"):
+            net._warn("jooble: monthly budget spent; skipping")
+            break
         data, result = net.get_json(
             f"{JOOBLE_URL}/{key}", method="POST",
             payload={"keywords": query, "location": "Singapore", "page": page},
             cache_ttl_s=cache_ttl_s,
         )
+        if not result.from_cache:
+            quota.spend("jooble")
         if not result.ok or not isinstance(data, dict):
             net._warn(f"jooble: page {page} failed ({result.error})")
             break

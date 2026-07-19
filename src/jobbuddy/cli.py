@@ -110,6 +110,12 @@ def explain_job(job_key: str) -> int:
 
 def main() -> int:
     _enable_utf8_stdout()
+    # Without this, every API key in .env is invisible to the CLI and the paid
+    # sources silently contribute nothing -- `partner_kept: 0` with a working
+    # key sitting in the file. The notebook happened to load it; the CLI did not.
+    from jobbuddy.deepseek import deepseek_common
+
+    deepseek_common.load_dotenv()
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

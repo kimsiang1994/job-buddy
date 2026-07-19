@@ -218,6 +218,24 @@
       "website": "https://www.thoughtworks.com/careers",
       "via": "discovery",
       "note": "no ATS found"
+    },
+    "activate interactive": {
+      "vendor": "workable",
+      "token": "activate-interactive-pte-ltd",
+      "website": "http://www.activate.sg",
+      "via": "company registry"
+    },
+    "mlabs": {
+      "vendor": "workable",
+      "token": "mlabs",
+      "website": "https://mlabs.city",
+      "via": "company registry"
+    },
+    "shield": {
+      "vendor": "workable",
+      "token": "shield-1",
+      "website": "https://shield.com/",
+      "via": "company registry"
     }
   }
 }

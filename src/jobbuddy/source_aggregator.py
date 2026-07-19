@@ -35,9 +35,12 @@ import os
 import urllib.parse
 from typing import Any
 
-from jobbuddy import html_text, job_schema, net
+from jobbuddy import html_text, job_schema, net, quota
 
-JSEARCH_URL = "https://api.openwebninja.com/v1/jsearch/search"
+# Endpoint and header taken from OpenWeb Ninja's own snippet. The path is
+# /jsearch/search-v2 with an `X-API-Key` header -- not the /v1/ path or the
+# lowercase header this originally guessed at.
+JSEARCH_URL = "https://api.openwebninja.com/jsearch/search-v2"
 JSEARCH_RAPIDAPI_URL = "https://jsearch.p.rapidapi.com/search"
 ADZUNA_URL = "https://api.adzuna.com/v1/api/jobs/sg/search"
 
@@ -73,20 +76,38 @@ def _jsearch_records(query: str, pages: int, cache_ttl_s: float) -> list[dict[st
             "country": "sg",
             "date_posted": "month",
         })
-        # OpenWeb Ninja direct avoids RapidAPI's margin; fall back to the
-        # RapidAPI host if the key looks like a RapidAPI one.
-        if len(key) > 45:
+        # Route by key PREFIX, not length. OpenWeb Ninja issues `ak_...` keys
+        # and RapidAPI issues bare hex; a length test sent a 50-character
+        # `ak_` key to RapidAPI, which answered 403.
+        if not key.startswith("ak_") and len(key) > 45:
             url, headers = (f"{JSEARCH_RAPIDAPI_URL}?{params}",
                             {"x-rapidapi-key": key,
                              "x-rapidapi-host": "jsearch.p.rapidapi.com"})
         else:
-            url, headers = f"{JSEARCH_URL}?{params}", {"x-api-key": key}
+            url, headers = f"{JSEARCH_URL}?{params}", {"X-API-Key": key}
 
+        if not quota.can_spend("jsearch"):
+            net._warn(f"jsearch: monthly budget spent "
+                      f"({quota.used('jsearch')}/{quota.limit_for('jsearch')}); skipping")
+            break
         data, result = net.get_json(url, headers=headers, cache_ttl_s=cache_ttl_s)
+        if not result.from_cache:
+            quota.spend("jsearch")
         if not result.ok or not isinstance(data, dict):
             net._warn(f"jsearch: page {page} failed ({result.error})")
             break
-        batch = data.get("data") or []
+        # search-v2 nests results under data.jobs and paginates by cursor.
+        # The v1 shape put them directly in `data`, so both are accepted --
+        # reading the wrong one yielded a list of strings and an AttributeError
+        # deep in the mapper rather than an obvious failure at the boundary.
+        payload = data.get("data")
+        if isinstance(payload, dict):
+            batch = payload.get("jobs") or []
+        elif isinstance(payload, list):
+            batch = payload
+        else:
+            batch = []
+        batch = [r for r in batch if isinstance(r, dict)]
         if not batch:
             break
         records.extend(batch)
@@ -158,8 +179,13 @@ def _adzuna_records(query: str, pages: int, cache_ttl_s: float) -> list[dict[str
             "what": query, "results_per_page": 50,
             "content-type": "application/json",
         })
+        if not quota.can_spend("adzuna"):
+            net._warn("adzuna: monthly budget spent; skipping")
+            break
         data, result = net.get_json(f"{ADZUNA_URL}/{page}?{params}",
                                     cache_ttl_s=cache_ttl_s)
+        if not result.from_cache:
+            quota.spend("adzuna")
         if not result.ok or not isinstance(data, dict):
             net._warn(f"adzuna: page {page} failed ({result.error})")
             break
