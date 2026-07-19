@@ -203,6 +203,24 @@ def promote(draft: dict[str, Any], out_path: Path | None = None,
     return path
 
 
+def load_verified(path: Path | None = None) -> dict[str, Any]:
+    """The promoted profile, or {} if there is not one yet.
+
+    Cannot raise, per the repo convention -- callers distinguish "no profile"
+    from "a profile" by whether `facts` is empty, and a malformed file is the
+    same answer as an absent one for their purposes. `utf-8-sig` because a
+    profile edited in Notepad comes back with a BOM that `json.load` rejects.
+    """
+    path = path or VERIFIED_PATH
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def load_draft(path: Path | None = None) -> dict[str, Any]:
     path = path or DRAFT_PATH
     if not path.is_file():

@@ -66,6 +66,11 @@ COLUMNS: tuple[tuple[str, str, int], ...] = (
     ("location", "location", 20),
     ("url", "url", 44),
     ("job key", "job_key", 22),
+    # Set by the tailoring stage, blank when it did not run or did not reach
+    # this job. It carries the FAILURE reason as well as the successes: a
+    # workbook that lists only the jobs that rendered lies by omission, and the
+    # omission is invisible to the person reading it.
+    ("tailoring", "tailoring", 44),
 )
 
 _ILLEGAL_SHEET = re.compile(r"[\[\]:*?/\\]")

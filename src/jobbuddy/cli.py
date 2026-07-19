@@ -82,6 +82,53 @@ def print_result(result: pipeline.RunResult, top: int, had_prior_runs: bool) -> 
             print(f"\nwrote {path}")
 
 
+def build_tailor_options(args: argparse.Namespace) -> dict[str, object] | None:
+    """Options for the tailoring stage, or None with a message on stderr.
+
+    Refuses rather than degrading. Tailoring without a verified profile would
+    either invent facts or emit an empty resume, and both are worse than a
+    message telling the user which of the two setup steps they still owe.
+    """
+    from jobbuddy import verify_profile
+    from jobbuddy.import_resume import VERIFIED_PATH
+
+    profile = verify_profile.load_verified()
+    if not (profile.get("facts") or []):
+        print(f"--tailor needs a verified profile at {VERIFIED_PATH}, and there "
+              "is not a usable one.\n"
+              "  1. py -m jobbuddy.import_resume <your-resume.pdf>\n"
+              "  2. review the draft, then verify_profile.promote() it",
+              file=sys.stderr)
+        return None
+
+    if args.dry_run:
+        print("--tailor does nothing under --dry-run (it writes documents)",
+              file=sys.stderr)
+        return None
+
+    return {
+        "profile": profile,
+        "top": args.tailor_top,
+        "max_pages": args.max_pages,
+        "max_cost_usd": args.max_cost,
+        "strategy_names": [s.strip() for s in args.strategies.split(",")
+                           if s.strip()] or None,
+    }
+
+
+def print_tailoring(run: pipeline.TailorRun) -> None:
+    """Say what was produced AND what was not. The second half is the point."""
+    print(f"\n=== tailoring: {run.summary()} ===")
+    for outcome in run.outcomes:
+        label = f"{outcome.title[:44]:44} {outcome.company[:18]:18}"
+        print(f"  {label} {outcome.note()}")
+        if outcome.page_one and outcome.page_one.get("missing"):
+            for missing in outcome.page_one["missing"]:
+                print(f"      not on page 1: {missing}")
+    if run.workbook:
+        print(f"\nwrote {run.workbook}")
+
+
 def explain_job(job_key: str) -> int:
     """Dump everything known about one job from the sightings history."""
     history = job_store.JobHistory.load()
@@ -127,6 +174,21 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="score and print, but write no state and no artefacts")
     parser.add_argument("--top", type=int, default=15, help="rows to print (default 15)")
+    # The tailoring stage. Opt-in, because it is the only part of this CLI that
+    # costs money and the only part that needs a verified profile.
+    parser.add_argument("--tailor", action="store_true",
+                        help="tailor a resume and analysis for the top jobs "
+                             "(costs money; needs a verified profile)")
+    parser.add_argument("--tailor-top", dest="tailor_top", type=int, default=5,
+                        metavar="N",
+                        help="how many jobs to tailor (default 5)")
+    parser.add_argument("--max-pages", type=int, default=1,
+                        help="page budget for the resume (default 1)")
+    parser.add_argument("--max-cost", type=float, default=1.0, metavar="USD",
+                        help="stop tailoring once this much has been spent "
+                             "(default 1.0)")
+    parser.add_argument("--strategies", default="",
+                        help="comma-separated tailoring strategy names")
     args = parser.parse_args()
 
     if args.explain:
@@ -150,6 +212,12 @@ def main() -> int:
         selected = scopes[:1]
         print(f"no --scope given; using {selected[0]['name']!r}\n")
 
+    tailor_options = None
+    if args.tailor:
+        tailor_options = build_tailor_options(args)
+        if tailor_options is None:
+            return 2
+
     history = job_store.JobHistory.load()
     had_prior_runs = history.run_count > 0
 
@@ -162,6 +230,7 @@ def main() -> int:
         cache_ttl_s=0.0 if args.no_cache else 900.0,
         dry_run=args.dry_run,
         history=history,
+        tailor_options=tailor_options,
     )
     print(f"    {result.counters}")
 
@@ -173,6 +242,8 @@ def main() -> int:
         return 2
 
     print_result(result, args.top, had_prior_runs)
+    if result.tailoring is not None:
+        print_tailoring(result.tailoring)
     return result.exit_code()
 
 
