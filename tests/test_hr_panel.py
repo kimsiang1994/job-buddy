@@ -18,8 +18,8 @@ import unittest
 from jobbuddy import hr_panel
 from jobbuddy import job_schema
 
-RESUME = """Yeo Kim Siang
-Manager, Data Engineering -- Citibank Singapore, Aug 2023 to Nov 2024
+RESUME = """Alex Tan
+Manager, Data Engineering -- Umbra Financial, Aug 2023 to Nov 2024
 - Cut data generation from 10 to 5 working days by automating 4 ETL processes
 - Built PySpark pipelines replacing legacy SAS reporting
 """
@@ -32,12 +32,12 @@ REQUIREMENTS = [
 ]
 
 FACTS = {
-    "citibank.etl": {
-        "fact_id": "citibank.etl",
-        "org": "Citibank Singapore",
+    "umbra.etl": {
+        "fact_id": "umbra.etl",
+        "org": "Umbra Financial",
         "role": "Manager, Data Engineering",
         "skills": ["etl", "pyspark", "data governance"],
-        "entities": ["Citibank", "SAS"],
+        "entities": ["Umbra", "SAS"],
         "verified": True,
     },
 }
@@ -166,7 +166,7 @@ class TheGraderIsBlind(unittest.TestCase):
         hr_panel.run_panel(RESUME, JOB, REQUIREMENTS, chat=grader)
         blob = "\n".join(m["content"] for call in grader.calls for m in call)
         self.assertNotIn("fact_id", blob)
-        self.assertNotIn("citibank.etl", blob)
+        self.assertNotIn("umbra.etl", blob)
 
     def test_no_persona_sees_another_personas_verdict(self):
         """Each grader gets the same inputs; nothing accumulates between them."""
@@ -384,7 +384,7 @@ class GapAttribution(unittest.TestCase):
     def test_a_requirement_covered_by_a_facts_skills_was_cut_not_missing(self):
         result = hr_panel.attribute_gaps(["PySpark", "Kubernetes"], FACTS)
         self.assertEqual([g["requirement"] for g in result["have_but_cut"]], ["PySpark"])
-        self.assertEqual(result["have_but_cut"][0]["fact_id"], "citibank.etl")
+        self.assertEqual(result["have_but_cut"][0]["fact_id"], "umbra.etl")
         self.assertEqual(result["genuinely_lacking"], ["Kubernetes"])
 
     def test_an_entity_also_counts_as_coverage(self):

@@ -17,12 +17,12 @@ import unittest
 from jobbuddy import fact_guard
 
 FACT = {
-    "fact_id": "citibank.etl",
-    "org": "Citibank Singapore",
+    "fact_id": "umbra.etl",
+    "org": "Umbra Financial",
     "role": "Manager, Data Engineering",
     "start": "2023-08", "end": "2024-11",
     "numbers": ["10", "5", "4"],
-    "entities": ["Citibank", "ETL", "PySpark", "SAS"],
+    "entities": ["Umbra", "ETL", "PySpark", "SAS"],
     "skills": ["etl", "pyspark", "data-governance"],
     "phrasings": [
         "Cut data generation from 10 to 5 working days by automating 4 ETL processes",
@@ -159,12 +159,12 @@ class DurationsMustBeSupported(unittest.TestCase):
     def test_overstated_tenure_is_rejected(self):
         """The fact spans ~1.3 years; claiming 5 is a lie the dates disprove."""
         verdict = fact_guard.check_bullet(
-            "5 years of ETL leadership at Citibank", FACT, PROFILE)
+            "5 years of ETL leadership at Umbra", FACT, PROFILE)
         self.assertFalse(verdict.ok)
         self.assertTrue(any("duration" in r for r in verdict.reasons))
 
     def test_supported_tenure_passes(self):
-        verdict = fact_guard.check_bullet("1 year of ETL work at Citibank", FACT, PROFILE)
+        verdict = fact_guard.check_bullet("1 year of ETL work at Umbra", FACT, PROFILE)
         self.assertTrue(verdict.ok, verdict.reasons)
 
 
@@ -191,7 +191,7 @@ class GuardFallsBackRatherThanEmittingFalsehood(unittest.TestCase):
         """A blander resume is acceptable. A false one is not."""
         safe, verdicts = fact_guard.guard(
             [{"text": "Cut data generation by 90% at Goldman Sachs",
-              "fact_id": "citibank.etl"}],
+              "fact_id": "umbra.etl"}],
             FACTS, PROFILE)
         self.assertEqual(len(safe), 1)
         self.assertEqual(safe[0], FACT["phrasings"][0])
@@ -211,15 +211,15 @@ class GuardFallsBackRatherThanEmittingFalsehood(unittest.TestCase):
 
     def test_true_bullets_pass_through_untouched(self):
         safe, verdicts = fact_guard.guard(
-            [{"text": FACT["phrasings"][0], "fact_id": "citibank.etl"}],
+            [{"text": FACT["phrasings"][0], "fact_id": "umbra.etl"}],
             FACTS, PROFILE)
         self.assertEqual(safe, [FACT["phrasings"][0]])
         self.assertFalse(verdicts[0].fallback_used)
 
     def test_summary_reports_what_was_caught(self):
         _, verdicts = fact_guard.guard(
-            [{"text": "Cut costs by 80% at Meta", "fact_id": "citibank.etl"},
-             {"text": FACT["phrasings"][0], "fact_id": "citibank.etl"}],
+            [{"text": "Cut costs by 80% at Meta", "fact_id": "umbra.etl"},
+             {"text": FACT["phrasings"][0], "fact_id": "umbra.etl"}],
             FACTS, PROFILE)
         summary = fact_guard.summarise(verdicts)
         self.assertEqual(summary["bullets"], 2)
@@ -246,7 +246,7 @@ class NothingUnverifiedEverEscapes(unittest.TestCase):
 
     def test_every_emitted_bullet_passes_the_guard(self):
         safe, _ = fact_guard.guard(
-            [{"text": t, "fact_id": "citibank.etl"} for t in self.HOSTILE],
+            [{"text": t, "fact_id": "umbra.etl"} for t in self.HOSTILE],
             FACTS, PROFILE)
         for bullet in safe:
             with self.subTest(bullet=bullet[:60]):
@@ -256,7 +256,7 @@ class NothingUnverifiedEverEscapes(unittest.TestCase):
 
     def test_the_one_true_bullet_survives(self):
         safe, _ = fact_guard.guard(
-            [{"text": t, "fact_id": "citibank.etl"} for t in self.HOSTILE],
+            [{"text": t, "fact_id": "umbra.etl"} for t in self.HOSTILE],
             FACTS, PROFILE)
         self.assertIn(FACT["phrasings"][0], safe)
 

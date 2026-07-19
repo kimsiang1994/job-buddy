@@ -315,7 +315,7 @@ def derive_skills(text: str, vocabulary: dict[str, float] | None = None) -> list
 
 
 def _looks_like_role_line(line: str) -> bool:
-    """True for 'TikTok, AI Engineer, Global Marketing Science  Feb 2026 - Present'.
+    """True for 'Northwind Labs, AI Engineer, Platform  Feb 2026 - Present'.
 
     A role line names an employer and a title, usually with a date. Bullet
     points describing the work are not role lines, which matters because the
