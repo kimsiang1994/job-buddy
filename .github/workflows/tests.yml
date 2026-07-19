@@ -24,30 +24,22 @@ jobs:
         with:
           python-version: "3.13"
 
-      # Every suite here is offline: no network, no API key, no cost. Anything
-      # that needs a key belongs in test_deepseek.py, which is NOT run here.
-      - name: Pipeline tests
-        run: python -m unittest test_pipeline -v
+      - name: Install the package
+        run: python -m pip install -e .
 
-      - name: Scraper regression tests
-        run: python test_scrapers.py
+      # Discovery runs every suite in tests/, so a new file is picked up
+      # automatically -- no list to forget to update. test_deepseek.py defines
+      # plain functions rather than TestCases, so it is not collected: it needs
+      # a real API key and costs money.
+      - name: Offline test suites
+        run: python -m unittest discover -s tests -t . -v
 
-      # A guard against the failure mode this repo has already had once: a test
-      # file that exists but is never executed. If a test_*.py is added and not
-      # listed above, this fails loudly rather than being silently skipped.
-      - name: Every offline suite is wired into CI
+      # The package must import with no optional dependency installed. The
+      # search pipeline is stdlib-only by design, and a missing wheel must
+      # never be able to block it.
+      - name: Core imports with no optional dependencies
         run: |
-          set -e
-          expected="test_pipeline.py test_scrapers.py"
-          # test_deepseek.py is excluded on purpose: it needs a real API key.
-          found="$(ls test_*.py | grep -v '^test_deepseek.py$' | tr '\n' ' ' | sed 's/ $//')"
-          expected_sorted="$(echo $expected | tr ' ' '\n' | sort | tr '\n' ' ')"
-          found_sorted="$(echo $found | tr ' ' '\n' | sort | tr '\n' ' ')"
-          if [ "$expected_sorted" != "$found_sorted" ]; then
-            echo "::error::Test files on disk do not match the suites wired into CI."
-            echo "  in CI:    $expected_sorted"
-            echo "  on disk:  $found_sorted"
-            echo "Add the new suite to .github/workflows/tests.yml."
-            exit 1
-          fi
-          echo "All offline suites are wired in: $found_sorted"
+          python -c "
+          from jobbuddy import pipeline, scoring, job_store, net, source_mcf, job_schema
+          print('core imports clean')
+          "

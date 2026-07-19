@@ -28,9 +28,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-import job_schema
+from jobbuddy import job_schema
 
-REPO_DIR = Path(__file__).resolve().parent
+REPO_DIR = Path(__file__).resolve().parents[2]
 STATE_DIR = REPO_DIR / "state"
 SIGHTINGS_PATH = STATE_DIR / "sightings.jsonl"
 JOB_STATE_PATH = STATE_DIR / "job_state.json"
@@ -248,14 +248,6 @@ def apply_history(
         # order the docstring forbids. Absence is mark_absent's job, and it
         # concerns jobs that are NOT in front of us.
 
-        # Applications accrued while we have been watching -- a direct read on
-        # how fast competition is arriving, independent of the absolute count.
-        first_apps = entry.get("first_applications")
-        last_apps = entry.get("last_applications")
-        if isinstance(first_apps, int) and isinstance(last_apps, int):
-            observed = job_schema.days_between(entry["first_seen_at"], entry["last_seen_at"])
-            if observed and observed >= 1:
-                job["apps_per_day_observed"] = round((last_apps - first_apps) / observed, 3)
 
     return jobs
 
@@ -378,9 +370,6 @@ def write_snapshot(
         return False
 
 
-def load_history(path: Path = SIGHTINGS_PATH) -> dict[str, dict[str, Any]]:
-    """Convenience: read and fold in one call."""
-    return fold(read_sightings(path))
 
 
 def all_run_ids(sightings: list[dict[str, Any]]) -> list[str]:
@@ -461,8 +450,6 @@ class JobHistory:
     def tracked_jobs(self) -> int:
         return len(self._history)
 
-    def knows(self, job_key: str) -> bool:
-        return job_key in self._history
 
     def entry(self, job_key: str) -> dict[str, Any] | None:
         return self._history.get(job_key)

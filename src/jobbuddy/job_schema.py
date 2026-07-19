@@ -376,15 +376,11 @@ def new_job(source: str, source_job_id: Any) -> dict[str, Any]:
         "age_days": None,
         "reposted": False,
         "repost_of": [],
-        "disappeared_at": None,
         "absent_runs": 0,
-        "time_to_fill_days": None,
-        "time_to_fill_confidence": None,
         "liveness": "UNKNOWN",
 
         "scores": {},
         "scope": None,
-        "is_adjacent": False,
 
         "_provenance": {},
         "_schema_version": SCHEMA_VERSION,

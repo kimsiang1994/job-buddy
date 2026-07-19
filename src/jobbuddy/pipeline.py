@@ -28,11 +28,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-import job_store
-import scoring
-import source_mcf
+from jobbuddy import job_store
+from jobbuddy import scoring
+from jobbuddy import source_mcf
 
-REPO_DIR = Path(__file__).resolve().parent
+REPO_DIR = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = REPO_DIR / "potential applications"
 
 CSV_COLUMNS = (

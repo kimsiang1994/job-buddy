@@ -45,7 +45,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-REPO_DIR = Path(__file__).resolve().parent
+REPO_DIR = Path(__file__).resolve().parents[2]
 INTAKE_DIR = REPO_DIR / "intake"
 RESUME_STORE = INTAKE_DIR / "resumes"
 SUBMISSIONS_LOG = INTAKE_DIR / "submissions.jsonl"
@@ -299,7 +299,7 @@ def derive_skills(text: str, vocabulary: dict[str, float] | None = None) -> list
     never adds a skill the resume does not evidence.
     """
     try:
-        import skills_taxonomy
+        from jobbuddy import skills_taxonomy
     except ImportError:
         return []
 
@@ -343,7 +343,7 @@ def derive_seniority(text: str, years: float | None) -> tuple[str | None, str]:
     bullet said 'Direct report to CEO' -- describing someone else's job.
     """
     try:
-        import job_schema
+        from jobbuddy import job_schema
     except ImportError:
         return None, "unavailable"
 
@@ -480,7 +480,7 @@ def build_profile(
     # sideways -- the point is better pay, better rank, or both. Defaulting the
     # target to the current level made the scorer rank staying-put roles top.
     if not profile.target_seniority and profile.current_seniority:
-        import job_schema
+        from jobbuddy import job_schema
 
         stepped = job_schema.step_up(profile.current_seniority, profile.seniority_ambition)
         profile.target_seniority = stepped or profile.current_seniority
@@ -808,7 +808,7 @@ def merge_skill_tiers(
     So: configured tiers win for skills they mention; everything else derived
     lands in `working`. Never `expert` -- that is the user's call to promote.
     """
-    import skills_taxonomy
+    from jobbuddy import skills_taxonomy
 
     tiers: dict[str, list[str]] = {"expert": [], "working": [], "familiar": []}
     for tier in tiers:

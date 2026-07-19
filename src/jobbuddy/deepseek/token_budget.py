@@ -16,10 +16,12 @@ import json
 import os
 import sys
 
-import model_config
+from jobbuddy.deepseek import model_config
 
-REPO_DIR = os.path.dirname(os.path.abspath(__file__))
-PROFILES_PATH = os.path.join(REPO_DIR, "task_profiles.json")
+# src/jobbuddy/deepseek/<file> -> four levels up is the repo root.
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+PROFILES_PATH = os.path.join(REPO_DIR, "config", "task_profiles.json")
 TOKENIZER_JSON = os.path.join(REPO_DIR, "tokenizer", "tokenizer.json")
 
 # DeepSeek's published offline ratios.

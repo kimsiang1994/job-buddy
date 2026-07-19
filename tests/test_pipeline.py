@@ -16,12 +16,12 @@ from __future__ import annotations
 import unittest
 
 import json
-import job_schema
-import job_store
-import scoring
-import skills_taxonomy
-import source_mcf
-import user_input
+from jobbuddy import job_schema
+from jobbuddy import job_store
+from jobbuddy import scoring
+from jobbuddy import skills_taxonomy
+from jobbuddy import source_mcf
+from jobbuddy import user_input
 
 # Trimmed from a real api.mycareersfuture.gov.sg/v2/jobs response, 2026-07-19.
 # Kept structurally faithful -- the nesting is what parsers trip over.

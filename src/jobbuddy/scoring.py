@@ -21,10 +21,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import job_schema
-import skills_taxonomy
+from jobbuddy import job_schema
+from jobbuddy import skills_taxonomy
 
-REPO_DIR = Path(__file__).resolve().parent
+REPO_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_DIR / "run_config.json"
 
 SKILL_TIER_WEIGHT = {"expert": 1.0, "working": 0.7, "familiar": 0.35}

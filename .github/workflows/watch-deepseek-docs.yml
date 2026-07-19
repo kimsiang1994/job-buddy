@@ -39,18 +39,18 @@ jobs:
       # Offline and free. Catches parser regressions before they can raise a
       # false alarm against the live docs.
       - name: Scraper regression tests
-        run: python test_scrapers.py
+        run: python -m unittest tests.test_scrapers
 
       - name: Docs diagnostics
         if: inputs.debug
-        run: python update_models.py --debug-docs
+        run: python -m jobbuddy.deepseek.update_models --debug-docs
 
       - name: Compare public docs against models.json
         id: check
         run: |
           # exit 2 means "something changed" -- expected, not a build failure,
           # so capture the code instead of letting `set -e` abort the job.
-          python update_models.py --docs-only --check > report.txt 2>&1 || code=$?
+          python -m jobbuddy.deepseek.update_models --docs-only --check > report.txt 2>&1 || code=$?
           code=${code:-0}
           echo "code=$code" >> "$GITHUB_OUTPUT"
           cat report.txt
@@ -64,7 +64,7 @@ jobs:
           body="$(printf '%s\n\n```\n%s\n```\n\n%s\n' \
             "The monthly docs check found changes in DeepSeek's public documentation." \
             "$(cat report.txt)" \
-            "Run \`py update_models.py\` locally to refresh models.json, then commit it.")"
+            "Run \`py -m jobbuddy.deepseek.update_models\` locally to refresh models.json, then commit it.")"
 
           # Comment on the existing issue rather than opening a duplicate each month.
           existing="$(gh issue list --state open --limit 50 --json number,title \

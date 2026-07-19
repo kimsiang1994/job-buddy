@@ -25,10 +25,10 @@ import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
-from html.parser import HTMLParser
 
-import deepseek_common as common
-import model_config
+from jobbuddy import html_text
+from jobbuddy.deepseek import deepseek_common as common
+from jobbuddy.deepseek import model_config
 
 CONFIG_PATH = model_config.CONFIG_PATH
 
@@ -107,36 +107,11 @@ def now_iso():
 # HTML -> flat text
 # --------------------------------------------------------------------------
 
-class _TextExtractor(HTMLParser):
-    SKIP = {"script", "style", "noscript", "svg", "head"}
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self._parts = []
-        self._skip = 0
-
-    def handle_starttag(self, tag, attrs):
-        if tag in self.SKIP:
-            self._skip += 1
-
-    def handle_endtag(self, tag):
-        if tag in self.SKIP and self._skip:
-            self._skip -= 1
-
-    def handle_data(self, data):
-        if not self._skip:
-            self._parts.append(data)
-
-    def text(self):
-        return re.sub(r"\s+", " ", " ".join(self._parts)).strip()
-
-
-def flatten_html(html):
-    """Regexing flattened *text* rather than the DOM survives a theme change;
-    it only breaks if the page's actual wording changes."""
-    parser = _TextExtractor()
-    parser.feed(html)
-    return parser.text()
+# flatten_html moved to jobbuddy.html_text -- the search pipeline needs it too,
+# and importing this module to get it made the free pipeline depend on the
+# paid layer. Re-exported here so existing references keep working.
+_TextExtractor = html_text.TextExtractor
+flatten_html = html_text.flatten_html
 
 
 # --------------------------------------------------------------------------

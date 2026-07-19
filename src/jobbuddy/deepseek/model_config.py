@@ -2,7 +2,7 @@
 
 Import this from application code:
 
-    import model_config
+    from jobbuddy.deepseek import model_config
     model = model_config.resolve("fast")
 
 Guarantees: never raises, never writes, never touches the network. If models.json
@@ -19,8 +19,10 @@ import re
 import sys
 from datetime import datetime, timezone
 
-REPO_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(REPO_DIR, "models.json")
+# src/jobbuddy/deepseek/<file> -> four levels up is the repo root.
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+CONFIG_PATH = os.path.join(REPO_DIR, "config", "models.json")
 
 TIERS = ("fast", "quality")
 

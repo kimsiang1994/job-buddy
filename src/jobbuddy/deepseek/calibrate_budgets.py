@@ -27,10 +27,12 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 
-import deepseek_common as common
+from jobbuddy.deepseek import deepseek_common as common
 
-REPO_DIR = os.path.dirname(os.path.abspath(__file__))
-PROFILES_PATH = os.path.join(REPO_DIR, "task_profiles.json")
+# src/jobbuddy/deepseek/<file> -> four levels up is the repo root.
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+PROFILES_PATH = os.path.join(REPO_DIR, "config", "task_profiles.json")
 USAGE_LOG = os.path.join(REPO_DIR, "usage_log.jsonl")
 
 # Below this, p95 is noise rather than signal.

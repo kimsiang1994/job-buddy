@@ -15,8 +15,8 @@ Dependencies: none (Python standard library only).
 
 import sys
 
-import deepseek_common as common
-import model_config
+from jobbuddy.deepseek import deepseek_common as common
+from jobbuddy.deepseek import model_config
 
 common.enable_utf8_stdout()
 

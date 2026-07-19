@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-REPO_DIR = Path(__file__).resolve().parent
+REPO_DIR = Path(__file__).resolve().parents[2]
 CACHE_DIR = REPO_DIR / "state" / "http_cache"
 
 USER_AGENT = "job-buddy/1.0 (+https://github.com/kimsiang1994/job-buddy)"
@@ -126,13 +126,20 @@ class FetchResult:
             return None
 
 
-def _throttle(host: str, sleep: Any = None) -> None:
-    """Block until this host's minimum interval has elapsed."""
+def _throttle(host: str, sleep: Any = None, clock: Any = None) -> None:
+    """Block until this host's minimum interval has elapsed.
+
+    `clock` travels with `sleep` for a reason: a no-op sleep alone turns this
+    loop into a busy-spin, which is worse than waiting -- it burns a real second
+    of CPU instead of yielding one. A fake sleep must advance a fake clock, so
+    tests inject both or neither.
+    """
     sleep = sleep or time.sleep
+    clock = clock or time.monotonic
     interval = HOST_MIN_INTERVAL.get(host, DEFAULT_MIN_INTERVAL)
     while True:
         with _rate_lock:
-            now = time.monotonic()
+            now = clock()
             last = _last_request_at.get(host, 0.0)
             wait = (last + interval) - now
             if wait <= 0:
@@ -237,6 +244,7 @@ def fetch(
     opener: Any = None,
     cache_dir: Path | None = None,
     sleep: Any = None,
+    clock: Any = None,
 ) -> FetchResult:
     """Fetch a URL safely. Never raises.
 
@@ -256,7 +264,8 @@ def fetch(
 
       opener     any object with .open(request, timeout=...); tests pass a fake
       cache_dir  where cache entries live; tests pass a tempdir
-      sleep      the delay function; tests pass a no-op to make backoff instant
+      sleep      the delay function; a fake one must advance `clock` too
+      clock      the monotonic clock the throttle measures against
 
     Two adapters justify the seam: urllib in production, a fake in tests.
     """
@@ -298,7 +307,7 @@ def fetch(
     while attempt < MAX_ATTEMPTS:
         attempt += 1
         host = urllib.parse.urlparse(current_url).netloc
-        _throttle(host, sleep=sleep)
+        _throttle(host, sleep=sleep, clock=clock)
 
         req = urllib.request.Request(
             current_url, data=body_bytes, headers=req_headers, method=method

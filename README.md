@@ -1,182 +1,150 @@
 # job-buddy
 
-Foundation for the Job Buddy project: a DeepSeek integration that keeps its own
-model choice and token budgets up to date instead of hardcoding them.
+Finds Singapore jobs, scores them against your resume, and tracks how the
+competition builds over time. The search half runs for free — no API key, no
+LLM, stdlib only.
 
-## Quick start
+## Start here
 
-    py test_deepseek.py          # verify the API key works end to end
-    py update_models.py          # refresh models.json from the API + docs
-    py calibrate_budgets.py --report
+```
+pip install -e ".[notebook]"
+```
+
+Then open **`JobBuddy.ipynb`** and run the cells top to bottom. Upload a resume,
+say what you're looking for, and it searches.
+
+That notebook is the whole interface. Everything else is implementation.
+
+```
+JobBuddy.ipynb        the interface
+run_config.json       the one file you edit by hand
+config/               machine-managed data (models.json, task_profiles.json)
+src/jobbuddy/         the code
+  deepseek/           the LLM layer -- unused by search, needed for tailoring
+tests/                offline suites: no network, no key, no cost
+```
+
+Command line, if you prefer:
+
+```
+jobbuddy --scope ai-engineer-sg          # after pip install -e .
+jobbuddy --all --limit 40
+jobbuddy --dry-run                       # score and print, write nothing
+jobbuddy --explain mcf:59501ac0...       # one job's full history
+```
 
 > **Use `py`, not `python`.** This machine has two Pythons — 3.13 under
 > `Programs\Python\Python313` (where `pip` installs go) and a Microsoft Store
-> 3.11 under `WindowsApps`. None of the scripts here carry a `#!` line, and that
-> is deliberate: `py.exe` *reads* shebangs and would silently route
-> `#!/usr/bin/env python3` to the Store 3.11, which has no packages installed.
+> 3.11 under `WindowsApps`. No script here carries a `#!` line, deliberately:
+> `py.exe` *reads* shebangs and would silently route to the Store 3.11.
 
-## Secrets
+## Where the jobs come from
 
-The API key lives in a local **`.env`** file that is **git-ignored** and never
-committed. `.env.example` is the committed template.
+**MyCareersFuture** (`api.mycareersfuture.gov.sg/v2/jobs`) — keyless, and
+`robots.txt` disallows nothing. Every employer hiring in Singapore must post
+there under the Fair Consideration Framework, so it reaches TikTok, Shopee and
+Grab, none of which expose a public careers API.
 
-    copy .env.example .env
-    # then edit .env and paste your real key
+It publishes three things almost nothing else does:
 
-Get a key from the DeepSeek console: https://platform.deepseek.com/
+| Field | Why it matters |
+|---|---|
+| `salary` | Mandatory and structured, by law |
+| `totalNumberJobApplication` | **The real count of submitted applications** |
+| `ssocCode`, `uen` | Join keys to MOM wage tables and the ACRA registry |
+
+That application count is the competition signal. It is better than LinkedIn's
+"X applicants", which counts click-throughs rather than applications — and
+which is scraping-only, so obtaining it would put your own account at risk.
+
+## How a job is scored
+
+Seven components, each 0–100, weights in `run_config.json`. **A component with
+no data returns nothing and its weight leaves the denominator** — imputing an
+average would claim knowledge we don't have.
+
+| Component | Weight | Reads |
+|---|---|---|
+| `skill_match` | 30 | your skills vs the job's, via the alias taxonomy |
+| `competition` | 20 | applications per vacancy, arrival rate, reposts |
+| `seniority_fit` | 15 | the level you **want**, not the one you hold |
+| `comp_signal` | 15 | stated range vs your reference point |
+| `company_signal` | 10 | open reqs and hiring velocity |
+| `application_friction` | 5 | direct employer vs agency |
+| `freshness` | 5 | age, with a 21-day half-life |
+
+Every score carries its inputs and a sentence explaining itself, and the CSV has
+a "why" column. A ranking you can't audit is one you can't trust.
+
+**You are matched against the level you want.** An `Ambition` setting (same
+level / one up / stretch) drives `target_seniority`. Defaulting it to your
+current level made the scorer rank staying-put roles top, which is the opposite
+of why anyone runs a job search.
+
+## What it records, and what never leaves
+
+| Path | Contents |
+|---|---|
+| `intake/` | your profile, submission log, archived resumes |
+| `state/sightings.jsonl` | every job seen, every run — the history behind "new since last time" |
+| `potential applications/` | ranked output per run |
+
+All gitignored. This repo is public and those hold a real name, phone number and
+salary expectations.
+
+**Salary never crosses the process boundary.** `user_input.redact_for_llm()` is
+an allowlist, so a confidential field added later is excluded by default rather
+than leaking until someone remembers a blocklist — and prompts are retained by
+providers, which makes that kind of leak permanent. Salary isn't in the
+allowlist at all: scoring turns it into a ratio locally, and a ratio is not a
+salary.
+
+## Tests
+
+```
+py -m unittest discover -s tests -t .     # 163 tests, offline, free
+py -m tests.test_deepseek                  # live smoke test, needs a key
+```
+
+CI runs the offline suites on every push. They previously ran nowhere — only the
+scraper tests ran, inside a monthly cron — which is how 86 tests came to exist
+without ever having been executed by CI.
+
+Every fixture is either real captured data or the exact shape that broke
+something once. **Add to them rather than rewriting them**; each one is a
+failure mode someone already paid for.
 
 ## Model selection — never hardcode a model id
 
-Application code asks for a *capability tier*, not a model name:
-
 ```python
-import model_config
+from jobbuddy.deepseek import model_config
 model = model_config.resolve("fast")     # or "quality"
 ```
 
-`models.json` maps tiers to concrete ids. When DeepSeek renames or retires a
-model, only that file changes — your code does not.
+`config/models.json` maps tiers to concrete ids, refreshed by
+`py -m jobbuddy.deepseek.update_models`. Scraping is *enrichment, never
+authority*: a failed scrape keeps the last known-good values rather than
+changing which model you call. `resolve()` never raises — its fallback chain
+ends at a hardcoded constant, so a corrupt config cannot take the app down.
 
-| Tier | Today | Why |
-|---|---|---|
-| `fast` | `deepseek-v4-flash` | lowest input price in the current generation |
-| `quality` | `deepseek-v4-pro` | highest input price in the current generation |
+**Note:** `deepseek-chat` and `deepseek-reasoner` were deprecated 2026-07-24.
+This repo resolves to `deepseek-v4-flash` / `deepseek-v4-pro`.
 
-Price is used as the capability proxy: within one vendor generation the price
-ladder *is* the vendor's own capability ordering, and it is the only signal that
-is published, numeric and self-updating.
+## Design rules that earn their keep
 
-`py update_models.py` refreshes that file from three sources, in trust order:
+- **One writer per file.** Two writers eventually clobber each other.
+- **The read path cannot raise.** A tool that dies because its config is
+  malformed is worse than one that warns and falls back.
+- **Enrichment is never authority.** A failed scrape marks data stale; it never
+  overwrites good data with degraded data.
+- **Feed absence is not closure.** A job vanishing from search results means the
+  results shifted. Only its own endpoint can say it's closed.
+- **A false skill match is worse than a missed one.** It inflates fit, and
+  downstream it could justify a resume bullet claiming something you can't back
+  up.
 
-1. `GET /models` — authoritative for availability (ids only).
-2. the public pricing page — best-effort scrape.
-3. the public changelog — best-effort scrape for deprecation notices.
+## Not built yet
 
-Scraping is *enrichment*, never authority. A failed or nonsensical scrape marks
-data stale and keeps the last known-good values rather than changing which model
-you call. Specific guards:
-
-- **5× anomaly gate** — a scraped price wildly different from the stored one is
-  treated as parser drift, not a price change.
-- **Sticky deprecation** — a notice can set `deprecated`, but a failed scrape can
-  never clear it. Silently calling a dead model is the worse failure.
-- **Stale availability halts selection** — if `/models` does not answer, tiers are
-  not re-resolved at all.
-- **New generations are quarantined** — an unrecognised id lands in `pending` and
-  must pass six gates (parses, known family, known price, 7-day soak, 3 sightings,
-  sane price) *and* an explicit `--accept-new-generation`.
-
-`model_config.resolve()` never raises. Its fallback chain is
-`$DEEPSEEK_MODEL` → tier pin → configured model → re-derived → hardcoded constant,
-so a missing or corrupt `models.json` cannot take the app down.
-
-Exit codes: `0` clean · `1` a source failed · `2` action needed.
-
-Useful flags: `--dry-run` (print the diff, write nothing), `--pin fast=MODEL`,
-`--unpin fast`, `--accept-new-generation`, `--debug-docs` (dump what the scrapers
-see), and `--clear-deprecation MODEL` — the escape hatch for a false positive,
-since the flag is sticky and would otherwise survive every later run.
-
-### Testing the scrapers
-
-    py test_scrapers.py     # offline, no key, no cost
-
-DeepSeek serves its docs with **different markup in different regions**, so a
-scraper that passes locally can still fail in CI — that happened twice here. Every
-fixture in `test_scrapers.py` is real text that actually broke the parser, so add
-to that file rather than rewriting it when the docs change shape again. The
-workflow runs these tests before it compares anything against the live docs.
-
-## Token budgeting
-
-```python
-import deepseek_client
-result = deepseek_client.complete("Is this a job ad? yes/no", profile="classify")
-print(result["text"])
-```
-
-**The dominant lever is `thinking`, not `max_tokens`.** On v4 models thinking is
-*enabled by default*, reasoning tokens are billed inside `completion_tokens`, and
-they are produced *before* the answer — so an undersized budget returns an empty
-reply with `finish_reason: "length"`. Measured on the same prompt:
-
-| Setting | completion tokens | cost |
-|---|---|---|
-| thinking enabled | 35 (30 of them reasoning) | $0.0000115 |
-| thinking disabled | 4 | $0.0000028 |
-
-`task_profiles.json` sets both knobs per task type:
-
-| Profile | thinking | max_tokens |
-|---|---|---|
-| `classify` | disabled | 64 |
-| `extract` | disabled | 512 |
-| `summarize` | disabled | 1024 |
-| `analyze` | enabled / high | 4096 |
-| `deep` | enabled / max | 16384 |
-
-If a reply is truncated, the client **retries once at double the budget**, which
-makes any estimation error self-correcting.
-
-### Token counting
-
-`token_budget.estimate_tokens()` uses DeepSeek's official tokenizer when present
-and falls back to the documented char-ratio heuristic (0.3 tok/char EN,
-0.6 CJK) otherwise, so it always works with zero dependencies.
-
-    py fetch_tokenizer.py            # downloads tokenizer/tokenizer.json
-    pip install -r requirements.txt  # the lightweight `tokenizers` loader
-
-Every call logs its predicted token count next to the API's real one, so the
-estimator's accuracy is a **measured number, not an assumption** — which matters
-because the only tokenizer DeepSeek publishes is the *v3* one while we call *v4*
-models. Current measurement:
-
-    heuristic  mean error 23.3%   worst 30.8%
-    official   mean error  0.0%   worst  0.0%
-
-Check it yourself any time with `py calibrate_budgets.py --report`.
-
-### Calibration
-
-`usage_log.jsonl` (git-ignored) records every call. `py calibrate_budgets.py`
-retunes each profile's `max_tokens` to p95 × 1.25 of observed usage, but only
-once a profile has ≥30 samples — below that, p95 is noise. Until real traffic
-accumulates the seeded defaults stand, which is the intended behaviour.
-
-## Automated docs watch
-
-`.github/workflows/watch-deepseek-docs.yml` runs monthly and opens an issue when
-DeepSeek's public docs change. It needs **no API key**: pricing and deprecation
-notices are public, and only `/models` requires auth, which that job skips.
-
-It is a **sensor, not a mutator** — it never writes `models.json`. Without
-`/models` it cannot verify availability, so writing partial config would be
-unsafe; the authoritative refresh stays a local `py update_models.py` run.
-
-Monthly rather than weekly because DeepSeek changed models ~5 times in 11 months
-and gives ~90 days' deprecation notice — weekly polling would be >90% no-op runs,
-and no-op automation is how the one alert that matters gets ignored.
-
-Note GitHub disables scheduled workflows after 60 days of repo inactivity, so the
-primary safety net is local: `model_config` warns whenever `models.json` is more
-than 30 days stale.
-
-## Files
-
-| File | Role |
-|---|---|
-| `deepseek_common.py` | shared `.env` loading + HTTP plumbing |
-| `model_config.py` | tier → model resolver, plus the selection heuristic |
-| `update_models.py` | refreshes `models.json` (the only writer) |
-| `models.json` | model facts, pricing, deprecations, tier mapping |
-| `token_budget.py` | token estimation + profile → budget |
-| `task_profiles.json` | task profiles (written only by `calibrate_budgets.py`) |
-| `deepseek_client.py` | the call path: resolve → call → log → retry |
-| `calibrate_budgets.py` | retunes profiles from logged usage |
-| `fetch_tokenizer.py` | downloads the optional official tokenizer |
-| `test_deepseek.py` | end-to-end key + inference check (needs a key) |
-| `test_scrapers.py` | offline regression tests for the docs scrapers |
-
-Each config file has exactly one writer, so two scripts can never clobber the
-same file.
+Resume tailoring. It comes after `fact_guard.py` — the deterministic validator
+that rejects any generated bullet containing a number, entity or duration that
+doesn't trace to a verified fact. The gate gets built before the thing it gates.

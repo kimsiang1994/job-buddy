@@ -20,9 +20,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-import job_store
-import pipeline
-import scoring
+from jobbuddy import job_store
+from jobbuddy import pipeline
+from jobbuddy import scoring
 
 # `enable_utf8_stdout` lives in deepseek_common, which reads .env at import.
 # Importing the LLM plumbing into the no-LLM spine would make it load-bearing

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jobbuddy"
+version = "0.2.0"
+description = "Find Singapore jobs, score them against a verified profile, tailor a resume per role."
+requires-python = ">=3.11"
+
+# The search pipeline is stdlib-only and always runs. Everything below is
+# optional and degrades with a message rather than a traceback -- a missing
+# wheel must never block your data.
+dependencies = []
+
+[project.optional-dependencies]
+notebook = ["ipywidgets>=8", "ipykernel>=6", "pypdf>=4"]
+tailoring = ["pypdf>=4", "typst>=0.11", "python-docx>=1.1", "xlsxwriter>=3.2"]
+tokenizer = ["tokenizers>=0.15"]
+dev = ["nbclient>=0.10", "nbformat>=5"]
+
+[project.scripts]
+jobbuddy = "jobbuddy.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.unittest]
+start-dir = "tests"

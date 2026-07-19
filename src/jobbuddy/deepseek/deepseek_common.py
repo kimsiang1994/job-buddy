@@ -14,7 +14,9 @@ import urllib.request
 # failure paths degrade rather than crash.
 BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 
-REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+# src/jobbuddy/deepseek/<file> -> four levels up is the repo root.
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
 ENV_PATH = os.path.join(REPO_DIR, ".env")
 
 USER_AGENT = "job-buddy/1.0 (+https://github.com/kimsiang1994/job-buddy)"

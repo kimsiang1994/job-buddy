@@ -13,7 +13,7 @@ failures below were found that way.
 
 import unittest
 
-import update_models as u
+from jobbuddy.deepseek import update_models as u
 
 IDS = ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"]
 LEGACY = {"deepseek-chat", "deepseek-reasoner"}
@@ -105,7 +105,7 @@ class PricingTable(unittest.TestCase):
 class ModelIdParsing(unittest.TestCase):
     def test_legacy_names_are_never_auto_selectable(self):
         # Returning None here is what keeps deepseek-chat out of tier selection.
-        import model_config
+        from jobbuddy.deepseek import model_config
         self.assertIsNone(model_config.parse_model_id("deepseek-chat"))
         self.assertIsNone(model_config.parse_model_id("deepseek-reasoner"))
         self.assertEqual(model_config.parse_model_id("deepseek-v4-flash"),

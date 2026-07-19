@@ -25,9 +25,9 @@ import urllib.parse
 from datetime import date
 from typing import Any, Iterator
 
-import job_schema
-import net
-import update_models  # reuse flatten_html rather than writing a second one
+from jobbuddy import job_schema
+from jobbuddy import net
+from jobbuddy import html_text
 
 BASE = "https://api.mycareersfuture.gov.sg/v2/jobs"
 JOB_URL = "https://www.mycareersfuture.gov.sg/job/{uuid}"
@@ -188,7 +188,7 @@ def to_job(record: dict[str, Any]) -> dict[str, Any] | None:
     html = record.get("description")
     job["jd_html"] = html if isinstance(html, str) else None
     try:
-        job["jd_text"] = job_schema.norm_text(update_models.flatten_html(html or ""))
+        job["jd_text"] = job_schema.norm_text(html_text.flatten_html(html or ""))
     except Exception as exc:  # a malformed JD must not kill the record
         net._warn(f"mcf: could not flatten description for {uuid} ({exc})")
         job["jd_text"] = job_schema.norm_text(html or "")

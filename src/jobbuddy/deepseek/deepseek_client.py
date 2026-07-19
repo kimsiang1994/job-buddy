@@ -1,6 +1,6 @@
 """The single call path for DeepSeek chat completions.
 
-    import deepseek_client
+    from jobbuddy.deepseek import deepseek_client
     result = deepseek_client.complete("Is this a job ad? yes/no", profile="classify")
     print(result["text"])
 
@@ -21,11 +21,13 @@ import os
 import sys
 from datetime import datetime, timezone
 
-import deepseek_common as common
-import model_config
-import token_budget
+from jobbuddy.deepseek import deepseek_common as common
+from jobbuddy.deepseek import model_config
+from jobbuddy.deepseek import token_budget
 
-REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+# src/jobbuddy/deepseek/<file> -> four levels up is the repo root.
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
 USAGE_LOG = os.path.join(REPO_DIR, "usage_log.jsonl")
 
 # Upper bound for the truncation retry, so a pathological case cannot escalate
