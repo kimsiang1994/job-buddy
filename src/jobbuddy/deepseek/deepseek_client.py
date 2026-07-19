@@ -17,6 +17,10 @@ Step 5 is what makes an estimation error self-correcting rather than a bug.
 """
 
 import json
+import random
+import re
+import threading
+import time
 import os
 import sys
 from datetime import datetime, timezone
@@ -34,18 +38,31 @@ USAGE_LOG = os.path.join(REPO_DIR, "usage_log.jsonl")
 # into a very expensive call.
 RETRY_CEILING = 32768
 
+# Transport-level retry, distinct from the truncation retry below. Without it a
+# single 429 at eight-way concurrency loses that job outright.
+RETRY_STATUSES = frozenset({0, 408, 429, 500, 502, 503, 504})
+MAX_HTTP_ATTEMPTS = 4
+
 
 def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# usage_log.jsonl is appended from every call. Under a thread pool on Windows
+# there is no atomic-append guarantee, so interleaved writes tear lines and the
+# torn ones are silently skipped by the reader -- you lose calibration samples
+# without ever seeing an error.
+_log_lock = threading.Lock()
+
+
 def _log_usage(record):
-    """Append one JSONL line. Logging must never break a call."""
-    try:
-        with open(USAGE_LOG, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except OSError as err:
-        print(f"[deepseek_client] could not write usage log: {err}", file=sys.stderr)
+    with _log_lock:
+        """Append one JSONL line. Logging must never break a call."""
+        try:
+            with open(USAGE_LOG, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError as err:
+            print(f"[deepseek_client] could not write usage log: {err}", file=sys.stderr)
 
 
 def _extract(body):
@@ -75,6 +92,7 @@ def chat(messages, profile=token_budget.DEFAULT_PROFILE, tier="fast", model=None
     else:
         max_tokens = plan["max_tokens"]
     attempts = 0
+    http_attempts = 0
     retried = False
 
     while True:
@@ -92,11 +110,21 @@ def chat(messages, profile=token_budget.DEFAULT_PROFILE, tier="fast", model=None
         status, body = common.api_request("POST", "/chat/completions",
                                           api_key, payload)
 
+        # Retry only what a retry can fix. A 400 or 401 means the request is
+        # wrong or the key is bad; retrying hides the bug and burns quota.
+        if status in RETRY_STATUSES and http_attempts < MAX_HTTP_ATTEMPTS:
+            http_attempts += 1
+            delay = min(2.0 ** http_attempts + random.random(), 30.0)
+            time.sleep(delay)
+            attempts -= 1          # a transport retry is not a budget attempt
+            continue
+
         if status != 200 or not isinstance(body, dict):
             return {"ok": False, "text": "", "reasoning": "",
                     "error": f"HTTP {status}: {str(body)[:300]}",
                     "model": plan["model"], "profile": plan["profile"],
-                    "attempts": attempts, "retried": retried}
+                    "attempts": attempts, "http_attempts": http_attempts,
+                    "retried": retried}
 
         parts = _extract(body)
         usage = body.get("usage") or {}
@@ -166,3 +194,88 @@ if __name__ == "__main__":
     outcome = complete(demo, profile=which)
     print(json.dumps({k: v for k, v in outcome.items() if k != "reasoning"},
                      indent=2, ensure_ascii=False))
+
+
+# --------------------------------------------------------------------------
+# Structured output
+# --------------------------------------------------------------------------
+
+_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.S)
+
+
+def _strip_fence(text):
+    """Models wrap JSON in markdown fences even when told not to."""
+    match = _FENCE_RE.match(text or "")
+    return match.group(1) if match else (text or "")
+
+
+def json_chat(messages, schema_keys=(), profile="extract", tier="fast",
+              model=None, repair=True, **overrides):
+    """Chat that returns parsed JSON, or says clearly why it could not.
+
+    `response_format` alone is not enough. Three things go wrong in practice
+    and each needs handling rather than an exception:
+
+      - the reply arrives wrapped in a markdown fence
+      - it parses but omits a key the caller needs
+      - it is truncated mid-object, so it never parses at all
+
+    So: parse, strip a fence and re-parse, check required keys, and on failure
+    make ONE cheap repair call showing the model its own output and the
+    specific complaint. A repair loop that runs unbounded is how a single bad
+    prompt spends a budget.
+
+    Returns {ok, data, raw, repaired, error, ...}. Never raises.
+    """
+    overrides.setdefault("response_format", {"type": "json_object"})
+    result = chat(messages, profile=profile, tier=tier, model=model, **overrides)
+
+    if not result.get("ok") and not result.get("text"):
+        return {**result, "data": None, "repaired": False}
+
+    def parse(text):
+        for candidate in (text, _strip_fence(text)):
+            try:
+                value = json.loads(candidate)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(value, dict):
+                return value, ""
+        return None, "reply is not a JSON object"
+
+    data, error = parse(result.get("text", ""))
+    if data is not None and schema_keys:
+        missing = [k for k in schema_keys if k not in data]
+        if missing:
+            data, error = None, f"missing required key(s): {', '.join(missing)}"
+
+    if data is not None:
+        return {**result, "data": data, "repaired": False, "error": ""}
+
+    if not repair:
+        return {**result, "ok": False, "data": None, "repaired": False,
+                "error": error}
+
+    # One repair attempt, at the cheapest profile -- reformatting is not a
+    # reasoning task and should not be billed as one.
+    fix = chat(
+        [
+            {"role": "system",
+             "content": "You fix malformed JSON. Reply with the corrected JSON "
+                        "object and nothing else. No prose, no code fence."},
+            {"role": "user",
+             "content": f"This was rejected because {error}.\n\n"
+                        f"Required keys: {', '.join(schema_keys) or '(any)'}\n\n"
+                        f"{result.get('text', '')[:4000]}"},
+        ],
+        profile="classify", tier="fast",
+        response_format={"type": "json_object"},
+    )
+    data, repair_error = parse(fix.get("text", ""))
+    if data is not None and schema_keys:
+        missing = [k for k in schema_keys if k not in data]
+        if missing:
+            data, repair_error = None, f"still missing: {', '.join(missing)}"
+
+    return {**result, "ok": data is not None, "data": data, "repaired": True,
+            "error": "" if data is not None else f"{error}; repair failed: {repair_error}"}

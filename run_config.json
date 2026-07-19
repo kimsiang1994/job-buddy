@@ -6,7 +6,7 @@
     "_comment": "Hard filters run BEFORE scoring and before anything costs money. A job that fails one is excluded with a reason, never ranked low.",
     "singapore_only": true,
     "open_only": true,
-    "min_salary_sgd_monthly": 7200,
+    "min_salary_sgd_monthly": null,
     "allow_unstated_salary": true,
     "max_seniority_gap_below": 2,
     "exclude_companies": [
@@ -20,7 +20,8 @@
       "\\bteacher\\b|\\btutor\\b",
       "\\bnational jobs\\b"
     ],
-    "exclude_agencies": false
+    "exclude_agencies": false,
+    "_salary_comment": "No hard floor. A floor DELETES jobs; scoring RANKS them, and a role that pays less but is otherwise a strong fit is worth seeing rather than silently dropping. comp_signal compares each range against your 8,000 reference, so upside rises to the top on its own."
   },
   "scopes": [
     {
