@@ -97,6 +97,64 @@ class EntitiesMustBeReal(unittest.TestCase):
         self.assertTrue(verdict.ok, verdict.reasons)
 
 
+class TheFactsOwnWordsAreAlwaysAllowed(unittest.TestCase):
+    """Found on the first live run: the guard rejected true bullets AND the
+    approved phrasings they fell back to, so the bullets vanished entirely.
+
+    A word standing in the resume line a fact came from cannot be a
+    fabrication. Rejecting it is not strictness, it is a broken guard -- and
+    one that deletes verified content while reporting success.
+    """
+
+    def test_a_plural_of_a_listed_entity_passes(self):
+        """'APIs' against an entity list saying 'API'."""
+        fact = dict(FACT, entities=["API"],
+                    phrasings=["Built and deployed REST APIs in containers"])
+        verdict = fact_guard.check_bullet(
+            "Built and deployed REST APIs in containers", fact, PROFILE)
+        self.assertTrue(verdict.ok, verdict.reasons)
+
+    def test_a_generic_term_in_the_approved_phrasing_passes(self):
+        """'ROI' -- no extractor lists it as an entity, but it is in the resume."""
+        fact = dict(FACT, entities=["Bayesian"],
+                    phrasings=["Built marketing-mix models quantifying ROI"])
+        verdict = fact_guard.check_bullet(
+            "Built marketing-mix models quantifying ROI", fact, PROFILE)
+        self.assertTrue(verdict.ok, verdict.reasons)
+
+    def test_every_approved_phrasing_passes_its_own_guard(self):
+        """The invariant that was violated. If a fact's own phrasing fails,
+        the fallback has nothing to fall back to."""
+        for phrasing in FACT["phrasings"]:
+            with self.subTest(phrasing=phrasing[:50]):
+                verdict = fact_guard.check_bullet(phrasing, FACT, PROFILE)
+                self.assertTrue(verdict.ok, verdict.reasons)
+
+    def test_the_source_span_passes_its_own_guard(self):
+        fact = dict(FACT, source_span="Automated 4 ETL processes using SAS Viya",
+                    phrasings=[])
+        verdict = fact_guard.check_bullet(
+            "Automated 4 ETL processes using SAS Viya", fact, PROFILE)
+        self.assertTrue(verdict.ok, verdict.reasons)
+
+    def test_this_does_not_weaken_the_guard(self):
+        """The loosening must not admit anything outside the fact's own text."""
+        fact = dict(FACT, phrasings=["Automated 4 ETL processes in PySpark"])
+        for hostile in ("Automated 4 ETL processes at Goldman Sachs",
+                        "Automated 4 ETL processes using Kubernetes",
+                        "Automated 40 ETL processes in PySpark"):
+            with self.subTest(hostile=hostile):
+                self.assertFalse(
+                    fact_guard.check_bullet(hostile, fact, PROFILE).ok)
+
+    def test_a_plural_does_not_admit_an_unrelated_word(self):
+        """Depluralisation must not turn 'AWS' into a licence for 'AW'."""
+        fact = dict(FACT, entities=["ETL"], phrasings=["Automated 4 ETL processes"])
+        self.assertFalse(
+            fact_guard.check_bullet("Automated 4 ETL processes on AWS",
+                                    fact, PROFILE).ok)
+
+
 class DurationsMustBeSupported(unittest.TestCase):
     def test_overstated_tenure_is_rejected(self):
         """The fact spans ~1.3 years; claiming 5 is a lie the dates disprove."""

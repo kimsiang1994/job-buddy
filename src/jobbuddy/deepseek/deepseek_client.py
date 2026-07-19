@@ -43,6 +43,24 @@ RETRY_CEILING = 32768
 # that the prompt is asking for too much in one call and should be chunked.
 MAX_TRUNCATION_RETRIES = 3
 
+# Seconds allowed for one HTTP call, before retries.
+BASE_TIMEOUT_S = 30.0
+# A reasoning model spends tokens thinking before it answers, and `analyze`
+# runs at reasoning_effort "high". At the 30s default every quality-tier call
+# timed out, was retried four times because status 0 is retryable, and then
+# reported "network error" -- so a configuration problem wore the costume of a
+# flaky connection. Scaled by output budget because thinking time tracks it.
+THINKING_TIMEOUT_S = 240.0
+MAX_TIMEOUT_S = 600.0
+
+
+def _timeout_for(plan: dict, max_tokens: int) -> float:
+    """Seconds to allow this call, from what the plan actually asks for."""
+    if not plan.get("thinking"):
+        return BASE_TIMEOUT_S
+    # ~20ms per token of headroom, floored at the thinking baseline.
+    return min(MAX_TIMEOUT_S, max(THINKING_TIMEOUT_S, max_tokens * 0.02 + 60.0))
+
 # Transport-level retry, distinct from the truncation retry below. Without it a
 # single 429 at eight-way concurrency loses that job outright.
 RETRY_STATUSES = frozenset({0, 408, 429, 500, 502, 503, 504})
@@ -113,7 +131,8 @@ def chat(messages, profile=token_budget.DEFAULT_PROFILE, tier="fast", model=None
         payload.update(overrides)
 
         status, body = common.api_request("POST", "/chat/completions",
-                                          api_key, payload)
+                                          api_key, payload,
+                                          timeout=_timeout_for(plan, max_tokens))
 
         # Retry only what a retry can fix. A 400 or 401 means the request is
         # wrong or the key is bad; retrying hides the bug and burns quota.

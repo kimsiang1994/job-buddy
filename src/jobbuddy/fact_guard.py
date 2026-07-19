@@ -121,17 +121,45 @@ def _fact_numbers(fact: dict[str, Any]) -> set[str]:
     return allowed
 
 
+def _singular(token: str) -> str:
+    """Crude depluralisation, enough to stop 'APIs' failing against 'API'."""
+    if len(token) > 3 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 2 and token.endswith("es") and not token.endswith("ses"):
+        return token[:-2]
+    if len(token) > 2 and token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
 def _fact_entities(fact: dict[str, Any]) -> set[str]:
     words: set[str] = set()
-    for key in ("entities", "skills"):
-        for item in fact.get(key) or []:
-            for token in re.split(r"[^\w+#.]+", str(item)):
-                if token:
-                    words.add(token.lower())
-    for key in ("org", "role", "team"):
-        for token in re.split(r"[^\w+#.]+", str(fact.get(key) or "")):
+
+    def add(text: str) -> None:
+        for token in re.split(r"[^\w+#.]+", str(text or "")):
             if token:
                 words.add(token.lower())
+                words.add(_singular(token.lower()))
+
+    for key in ("entities", "skills"):
+        for item in fact.get(key) or []:
+            add(item)
+    for key in ("org", "role", "team"):
+        add(fact.get(key))
+
+    # The fact's own verbatim text. A word standing in the resume line this
+    # fact came from is traceable to the resume BY DEFINITION -- it cannot be
+    # something the model invented. Without this the guard rejected true
+    # bullets for saying "APIs" where the entity list said "API", and for
+    # "ROI", a generic business term no extractor thinks to list as an entity.
+    #
+    # Worse, it rejected the approved phrasings too, so the fallback had
+    # nothing to fall back to and the bullet vanished silently. A guard that
+    # rejects the very text a human verified is not being strict, it is broken.
+    for phrasing in fact.get("phrasings") or []:
+        add(phrasing)
+    add(fact.get("source_span"))
+
     return words
 
 
@@ -211,7 +239,8 @@ def check_bullet(bullet: str, fact: dict[str, Any] | None,
         if match.start(1) == 0 and not re.search(r"[A-Z0-9+#.]", token[1:]):
             continue
 
-        if token.lower() not in allowed_entities:
+        lowered = token.lower()
+        if lowered not in allowed_entities and _singular(lowered) not in allowed_entities:
             violations.append(Violation(
                 "unverified entity",
                 f"{token!r} does not appear in fact {fact_id}", token))

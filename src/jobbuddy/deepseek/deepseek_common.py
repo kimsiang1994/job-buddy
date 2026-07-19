@@ -72,6 +72,14 @@ def api_request(method, path, api_key, payload=None, timeout=30):
     parsed_body is a dict/list for JSON responses, else the raw string. Network
     failures come back as (0, "network error: ...") rather than raising, so every
     caller can treat the outcome as a status check instead of juggling exceptions.
+
+    `timeout` defaults to 30s, which suits the non-thinking profiles this was
+    written for. It is far too short for a reasoning model: `analyze` runs at
+    reasoning_effort "high" and routinely spends longer than that thinking
+    before emitting a first token. Callers using a thinking profile must pass a
+    larger value -- `deepseek_client` derives one from the plan. Left at the
+    default, every quality-tier call fails as a socket timeout, which then
+    looks like a network fault rather than a configuration one.
     """
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(BASE_URL + path, data=data, method=method)
