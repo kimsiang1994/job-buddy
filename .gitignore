@@ -33,6 +33,10 @@ input/
 profile/master_profile.json
 profile/master_profile.draft.json
 
+# User intake. Holds a real name, phone number, salary expectations and the
+# archived resume itself. Written by user_input.py from the notebook form.
+intake/
+
 # Pipeline run artefacts. All reproducible by re-running, all machine-local.
 #   state/sightings.jsonl  is YOUR observation history -- it is the one thing
 #   here that cannot be regenerated, but it is also personal job-search data and

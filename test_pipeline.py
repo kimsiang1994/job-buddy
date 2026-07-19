@@ -20,6 +20,7 @@ import job_store
 import scoring
 import skills_taxonomy
 import source_mcf
+import user_input
 
 # Trimmed from a real api.mycareersfuture.gov.sg/v2/jobs response, 2026-07-19.
 # Kept structurally faithful -- the nesting is what parsers trip over.
@@ -539,6 +540,132 @@ class HardFilters(unittest.TestCase):
         config = dict(self.CONFIG)
         config["filters"] = dict(config["filters"], exclude_title_patterns=["[unclosed"])
         self.assertIsNone(scoring.check_filters(self._job(), config))
+
+
+class ResumeDerivation(unittest.TestCase):
+    """Derivation from resume text, without an LLM.
+
+    Both bugs pinned here were found by running against a real resume, not by
+    reading the code.
+    """
+
+    # Synthetic, but shaped exactly like the real resume that exposed both bugs:
+    # an EDUCATION block with date ranges above EXPERIENCE, and a bullet naming
+    # someone else's job title. No real contact details -- this repo is public.
+    RESUME = """ALEX EXAMPLE
+person@example.com | +65 8000 1234 | linkedin.com/in/alex-example-00000000
+
+EDUCATION
+Example University
+Master of IT in Business, AI Track (2021-2024); BSc Economics (2015-2020)
+
+EXPERIENCE
+Northwind, AI Engineer, Global Marketing Science  Feb 2026 - Present
+- Built an end-to-end RAG pipeline with LLM integration and fine-tuning.
+Contoso, Senior Data Analyst, AI & Optimisation  Nov 2024 - Jan 2026
+- AI product owner for a budget optimiser.
+Fabrikam, Senior Developer, Data & AI  Sep 2022 - Jul 2023
+Direct report to CEO, risk and commercial teams
+- Defined the company's AI strategy and roadmap.
+
+TECHNICAL SKILLS
+AI / ML: LLMs, RAG pipelines, LangChain, prompt engineering, fine-tuning
+Stack: Python, PySpark, SQL, AWS, Docker, Kubernetes
+"""
+
+    def test_education_dates_excluded_from_experience(self):
+        """Live bug: counting degree dates gave 11.3 years for a ~5 year career.
+
+        That pushed every seniority comparison two levels too senior.
+        """
+        years, evidence = user_input.derive_years_experience(self.RESUME)
+        self.assertTrue(evidence["read_experience_section_only"])
+        self.assertLess(years, 8.0, f"education dates leaked in: {evidence}")
+        self.assertGreater(years, 2.0)
+        joined = " ".join(evidence["spans_found"])
+        self.assertNotIn("2015", joined)
+
+    def test_warns_when_no_experience_heading_found(self):
+        years, evidence = user_input.derive_years_experience(
+            "Some Company 2019 - 2023\nAnother 2015 - 2018"
+        )
+        self.assertFalse(evidence["read_experience_section_only"])
+        self.assertIn("education dates may be included", evidence["note"])
+
+    def test_concurrent_roles_merged_not_summed(self):
+        text = "EXPERIENCE\nA, Eng  Jan 2020 - Jan 2024\nB, Advisor  Jan 2021 - Jan 2023\n"
+        years, evidence = user_input.derive_years_experience(text)
+        self.assertAlmostEqual(years, 4.0, delta=0.2)
+        self.assertEqual(evidence["merged_ranges"], 1)
+
+    def test_seniority_ignores_prose_about_other_people(self):
+        """Live bug: 'Direct report to CEO' made the candidate an 'executive'.
+
+        A title matcher fed a blob of resume prose matches anyone's job title,
+        not the candidate's.
+        """
+        level, basis = user_input.derive_seniority(self.RESUME, years=4.9)
+        self.assertNotEqual(level, "executive", f"matched prose, basis={basis}")
+
+    def test_bullet_lines_are_not_role_lines(self):
+        self.assertFalse(user_input._looks_like_role_line(
+            "- Defined the company's AI strategy, roadmap, and architecture."))
+        self.assertTrue(user_input._looks_like_role_line(
+            "Shopee, Senior Data Analyst, AI & Optimisation  Nov 2024 - Jan 2026"))
+
+    def test_contact_details_extracted(self):
+        contact = user_input.derive_contact(self.RESUME)
+        self.assertEqual(contact["email"], "person@example.com")
+        self.assertIn("8000", contact["phone"])
+        self.assertIn("linkedin.com/in/", contact["linkedin"])
+
+    def test_skills_derived_only_from_what_is_present(self):
+        skills = user_input.derive_skills(self.RESUME)
+        self.assertIn("python", skills)
+        self.assertIn("large language model", skills)   # via the 'LLMs' alias
+        # Never invent a skill the resume does not mention.
+        self.assertNotIn("reinforcement learning", skills)
+        self.assertNotIn("terraform", skills)
+
+    def test_validation_requires_the_compulsory_three(self):
+        problems = user_input.validate(user_input.IntakeProfile())
+        joined = " ".join(problems)
+        self.assertIn("full_name", joined)
+        self.assertIn("resume_path", joined)
+        self.assertIn("target_roles", joined)
+
+    def test_typed_values_beat_derived_values(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cv.txt"
+            path.write_text(self.RESUME, encoding="utf-8")
+            profile = user_input.build_profile(
+                full_name="Explicit Name", resume_path=path,
+                target_roles="AI Engineer", years_experience=9.0,
+            )
+        self.assertEqual(profile.full_name, "Explicit Name")
+        self.assertEqual(profile.years_experience, 9.0)
+        self.assertNotIn("years_experience", profile.derived)
+
+    def test_desired_below_current_pay_is_flagged(self):
+        profile = user_input.IntakeProfile(
+            full_name="A", resume_path=__file__, resume_text="x",
+            target_roles=["Eng"],
+            current_salary_sgd_monthly=12000, desired_salary_sgd_monthly=9000,
+        )
+        self.assertTrue(any("below current pay" in p for p in user_input.validate(profile)))
+
+    def test_unreadable_resume_reports_reason_not_crash(self):
+        text, how = user_input.read_resume_text("does/not/exist.pdf")
+        self.assertEqual(text, "")
+        self.assertIn("not found", how)
+
+    def test_unsupported_type_is_explained(self):
+        text, how = user_input.read_resume_text("resume.pages")
+        self.assertEqual(text, "")
+        self.assertIn("unsupported", how)
 
 
 class Validation(unittest.TestCase):
