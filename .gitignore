@@ -53,3 +53,8 @@ potential applications/
 # public, so it should never be committed.
 .claude/settings.json
 .claude/settings.local.json
+
+# Experiment results quote the resume back in the graders' reasoning, so they
+# carry real employment history. Discovered by scanning before a commit to
+# this PUBLIC repo, which is the wrong moment to find out. Results stay local.
+experiments/
