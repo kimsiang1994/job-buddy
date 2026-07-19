@@ -23,6 +23,7 @@ import json
 import os
 import threading
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -239,16 +240,13 @@ def apply_history(
             job["repost_of"] = siblings
             job["repost_count"] = max(job.get("repost_count") or 0, len(siblings))
 
-        # How many consecutive recent runs did this job miss? Only meaningful
-        # once there are runs to have missed.
-        if run_ids:
-            seen_runs = set(entry["runs"])
-            absent = 0
-            for candidate in reversed(run_ids):
-                if candidate in seen_runs:
-                    break
-                absent += 1
-            job["absent_runs"] = absent
+        # NOTE: absent_runs is deliberately NOT computed here. It used to be,
+        # and the code was provably dead: apply_history only ever runs on jobs
+        # fetched THIS run, whose run_id record_sightings has just written into
+        # entry["runs"], so the loop broke on the first candidate every time and
+        # the answer was always 0. It could only be non-zero when called in the
+        # order the docstring forbids. Absence is mark_absent's job, and it
+        # concerns jobs that are NOT in front of us.
 
         # Applications accrued while we have been watching -- a direct read on
         # how fast competition is arriving, independent of the absolute count.
@@ -321,15 +319,24 @@ def company_velocity(
     )
 
     stats: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"open_reqs": 0, "new_in_window": 0}
+        lambda: {"open_reqs": 0, "new_in_window": 0, "ever_seen": 0}
     )
     for entry in history.values():
         company = entry.get("company_norm")
         if not company:
             continue
-        stats[company]["open_reqs"] += 1
-        if (entry.get("first_seen_at") or "") >= cutoff:
-            stats[company]["new_in_window"] += 1
+        stats[company]["ever_seen"] += 1
+
+        # `open_reqs` must mean OPEN. It used to increment unconditionally, so
+        # it was really "every posting from this employer, ever" -- closed,
+        # expired and superseded included. Since scoring reads
+        # 40 + 12*open_reqs, any employer with five sightings pinned at 100, and
+        # after a few months of daily runs a 10-weight component became a
+        # constant. fold() already tracks last_is_open; this now uses it.
+        if entry.get("last_is_open"):
+            stats[company]["open_reqs"] += 1
+            if (entry.get("first_seen_at") or "") >= cutoff:
+                stats[company]["new_in_window"] += 1
 
     sufficient = history_days >= window_days
     for company in stats:
@@ -378,3 +385,147 @@ def load_history(path: Path = SIGHTINGS_PATH) -> dict[str, dict[str, Any]]:
 
 def all_run_ids(sightings: list[dict[str, Any]]) -> list[str]:
     return sorted({row["run_id"] for row in sightings if row.get("run_id")})
+
+
+# --------------------------------------------------------------------------
+# JobHistory -- the ordering contract, made impossible to get wrong
+# --------------------------------------------------------------------------
+
+@dataclass
+class Observation:
+    """What one run learned by looking. Returned by JobHistory.observe."""
+
+    run_id: str
+    jobs: list[dict[str, Any]]
+    velocity: dict[str, dict[str, Any]]
+    absent: list[dict[str, Any]]
+    new_keys: set[str]
+    prior_run_count: int
+    sightings_written: int
+
+    @property
+    def new_count(self) -> int:
+        return len(self.new_keys)
+
+    @property
+    def returning_count(self) -> int:
+        return len(self.jobs) - len(self.new_keys)
+
+
+class JobHistory:
+    """The sightings log, and the only correct way to use it.
+
+    Getting history right used to mean eleven ordered calls across two
+    *vintages* of the same data -- company_velocity had to see the log BEFORE
+    this run's sightings were appended, while apply_history had to see it
+    AFTER. Nothing enforced that. Calling in the wrong order produced no error,
+    just a quietly stale answer: last_seen_at one run behind, seen_count off by
+    one, velocity double-counting the run you are in.
+
+    The distinction still exists -- it is the correctness condition -- but it is
+    now internal. Callers get one method:
+
+        history = JobHistory.load()
+        result = history.observe(jobs, run_id)
+
+    `jobs` is mutated in place with history fields, and `result` carries
+    everything the caller previously had to assemble by hand.
+    """
+
+    def __init__(
+        self,
+        sightings: list[dict[str, Any]],
+        path: Path = SIGHTINGS_PATH,
+        snapshot_path: Path = JOB_STATE_PATH,
+    ) -> None:
+        self._path = path
+        self._snapshot_path = snapshot_path
+        self._sightings = sightings
+        self._history = fold(sightings)
+        self._run_ids = all_run_ids(sightings)
+
+    @classmethod
+    def load(
+        cls,
+        path: Path = SIGHTINGS_PATH,
+        snapshot_path: Path = JOB_STATE_PATH,
+    ) -> "JobHistory":
+        """Read the log once. Never raises."""
+        return cls(read_sightings(path), path=path, snapshot_path=snapshot_path)
+
+    @property
+    def run_count(self) -> int:
+        return len(self._run_ids)
+
+    @property
+    def tracked_jobs(self) -> int:
+        return len(self._history)
+
+    def knows(self, job_key: str) -> bool:
+        return job_key in self._history
+
+    def entry(self, job_key: str) -> dict[str, Any] | None:
+        return self._history.get(job_key)
+
+    def sightings_of(self, job_key: str) -> list[dict[str, Any]]:
+        """Every recorded observation of one job, oldest first."""
+        return [r for r in self._sightings if r.get("job_key") == job_key]
+
+    def observe(
+        self,
+        jobs: list[dict[str, Any]],
+        run_id: str,
+        *,
+        record: bool = True,
+        snapshot: bool = True,
+    ) -> Observation:
+        """Record this run's sightings and enrich `jobs` with their history.
+
+        The vintage ordering lives here so no caller can get it wrong:
+
+          1. capture velocity and new-key set from the PRIOR log
+          2. append this run's sightings
+          3. re-fold ONCE
+          4. apply the CURRENT history to the jobs
+          5. compute absence from the current run list
+
+        `record=False` is the dry-run path: everything is computed, nothing is
+        written, and the in-memory history is left untouched so a later real
+        run is not skewed by it.
+        """
+        # (1) Prior vintage. Velocity must not count the run being recorded, or
+        # every company's first sighting inflates its own score.
+        velocity = company_velocity(self._history)
+        new_keys = {j["job_key"] for j in jobs if j["job_key"] not in self._history}
+        prior_run_count = len(self._run_ids)
+
+        # (2) Append.
+        written = 0
+        if record:
+            written = record_sightings(jobs, run_id, self._path)
+            # (3) Re-fold once, from disk, so the in-memory view matches what a
+            # later process would read.
+            self._sightings = read_sightings(self._path)
+            self._history = fold(self._sightings)
+            self._run_ids = all_run_ids(self._sightings)
+
+        # (4) Current vintage.
+        apply_history(jobs, self._history, run_id, self._run_ids)
+
+        # (5) Absence -- only ever a prompt to re-check, never a closure claim.
+        absent = mark_absent(
+            self._history, {j["job_key"] for j in jobs}, self._run_ids
+        )
+
+        if record and snapshot:
+            write_snapshot(self._history, run_id, self._snapshot_path)
+
+        return Observation(
+            run_id=run_id,
+            jobs=jobs,
+            velocity=velocity,
+            absent=absent,
+            new_keys=new_keys,
+            prior_run_count=prior_run_count,
+            sightings_written=written,
+        )

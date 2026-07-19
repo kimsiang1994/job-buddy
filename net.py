@@ -126,8 +126,9 @@ class FetchResult:
             return None
 
 
-def _throttle(host: str) -> None:
+def _throttle(host: str, sleep: Any = None) -> None:
     """Block until this host's minimum interval has elapsed."""
+    sleep = sleep or time.sleep
     interval = HOST_MIN_INTERVAL.get(host, DEFAULT_MIN_INTERVAL)
     while True:
         with _rate_lock:
@@ -138,14 +139,16 @@ def _throttle(host: str) -> None:
                 _last_request_at[host] = now
                 return
         # Sleep outside the lock so other hosts are not blocked behind this one.
-        time.sleep(min(wait, interval))
+        sleep(min(wait, interval))
 
 
-def _cache_path(method: str, url: str, body: bytes | None) -> Path:
+def _cache_path(
+    method: str, url: str, body: bytes | None, cache_dir: Path | None = None
+) -> Path:
     digest = hashlib.sha256(
         b"|".join([method.encode(), url.encode(), body or b""])
     ).hexdigest()
-    return CACHE_DIR / digest[:2] / f"{digest}.json"
+    return (cache_dir or CACHE_DIR) / digest[:2] / f"{digest}.json"
 
 
 def _read_cache(path: Path, ttl_s: float) -> FetchResult | None:
@@ -231,6 +234,9 @@ def fetch(
     cache_ttl_s: float = 0.0,
     accept: str = "application/json",
     expect_content_type: str | None = None,
+    opener: Any = None,
+    cache_dir: Path | None = None,
+    sleep: Any = None,
 ) -> FetchResult:
     """Fetch a URL safely. Never raises.
 
@@ -240,7 +246,21 @@ def fetch(
     `cache_ttl_s > 0` serves an on-disk copy when one is fresh enough. Use it
     freely: re-running a pipeline during development should not re-hit a public
     endpoint dozens of times.
+
+    The last three arguments are seams, not features. Production passes none of
+    them. They exist because this is the most policy-dense code in the repo --
+    a retry set, a redirect cap, Retry-After handling, a size cap, a
+    content-type guard -- all hand-written, all easy to get subtly wrong, and
+    all previously unreachable by any test because the opener was constructed
+    inline and the cache path came from a module constant.
+
+      opener     any object with .open(request, timeout=...); tests pass a fake
+      cache_dir  where cache entries live; tests pass a tempdir
+      sleep      the delay function; tests pass a no-op to make backoff instant
+
+    Two adapters justify the seam: urllib in production, a fake in tests.
     """
+    sleep = sleep or time.sleep
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES:
         return FetchResult(False, 0, url, error=f"refusing non-http scheme: {parsed.scheme!r}")
@@ -251,7 +271,7 @@ def fetch(
     if payload is not None:
         body_bytes = payload if isinstance(payload, bytes) else json.dumps(payload).encode("utf-8")
 
-    cache_file = _cache_path(method, url, body_bytes)
+    cache_file = _cache_path(method, url, body_bytes, cache_dir)
     cached = _read_cache(cache_file, cache_ttl_s)
     if cached is not None:
         return cached
@@ -266,7 +286,8 @@ def fetch(
     if headers:
         req_headers.update(headers)
 
-    opener = urllib.request.build_opener(_NoRedirect)
+    if opener is None:
+        opener = urllib.request.build_opener(_NoRedirect)
     started = time.monotonic()
     current_url = url
     redirects = 0
@@ -277,7 +298,7 @@ def fetch(
     while attempt < MAX_ATTEMPTS:
         attempt += 1
         host = urllib.parse.urlparse(current_url).netloc
-        _throttle(host)
+        _throttle(host, sleep=sleep)
 
         req = urllib.request.Request(
             current_url, data=body_bytes, headers=req_headers, method=method
@@ -326,7 +347,7 @@ def fetch(
             retry_after = resp_headers.get("retry-after", "")
             if retry_after.strip().isdigit():
                 delay = max(delay, float(retry_after.strip()))
-            time.sleep(min(delay, 30.0))
+            sleep(min(delay, 30.0))
             continue
 
         if status == 0:
@@ -373,18 +394,27 @@ def fetch(
 
 def get_json(url: str, **kwargs: Any) -> tuple[Any | None, FetchResult]:
     """Fetch and parse JSON. Returns (data_or_None, result) so the caller can
-    distinguish 'request failed' from 'request fine, body was not JSON'."""
+    distinguish 'request failed' from 'request fine, body was not JSON'.
+
+    Enforces a JSON content-type. Without that check an outage serving an HTML
+    error page or a login wall came back ok=True with a None body, and callers
+    reported zero results and zero warnings -- silently, which is the one thing
+    this codebase is not allowed to do. A JSON endpoint returning HTML is a
+    failure, not an empty result.
+    """
     kwargs.setdefault("accept", "application/json")
+    kwargs.setdefault("expect_content_type", "json")
     result = fetch(url, **kwargs)
     return (result.json() if result.ok else None), result
 
 
-def clear_cache() -> int:
+def clear_cache(cache_dir: Path | None = None) -> int:
     """Delete the on-disk HTTP cache. Returns the file count removed."""
-    if not CACHE_DIR.is_dir():
+    root = cache_dir or CACHE_DIR
+    if not root.is_dir():
         return 0
     removed = 0
-    for path in CACHE_DIR.rglob("*.json"):
+    for path in root.rglob("*.json"):
         try:
             path.unlink()
             removed += 1

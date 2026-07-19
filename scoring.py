@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,21 @@ REPO_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_DIR / "run_config.json"
 
 SKILL_TIER_WEIGHT = {"expert": 1.0, "working": 0.7, "familiar": 0.35}
+
+
+@dataclass
+class ScoreContext:
+    """Whatever a component needs beyond the job and the profile.
+
+    Exists so that every component can share one signature. Add a field here
+    rather than adding a parameter to one function -- a component that cannot
+    reach the registry ends up outside the loop, and outside the error handling
+    and renormalisation the loop provides.
+    """
+
+    velocity: dict[str, dict[str, Any]] = field(default_factory=dict)
+    market_wages: dict[str, Any] = field(default_factory=dict)
+    home_postal_code: str | None = None
 
 # A posting collects most of its applications early; after about three weeks
 # the pile is deep and the recruiter is usually already interviewing.
@@ -86,7 +102,8 @@ def _flat_skills(profile: dict[str, Any]) -> dict[str, float]:
 # Components. Each returns (score_or_None, detail_dict).
 # --------------------------------------------------------------------------
 
-def score_skill_match(job: dict[str, Any], profile: dict[str, Any]) -> tuple[float | None, dict]:
+def score_skill_match(job: dict[str, Any], profile: dict[str, Any],
+                     ctx: "ScoreContext | None" = None) -> tuple[float | None, dict]:
     """Share of the job's requested skills the profile actually covers.
 
     Key skills (MCF's `isKeySkill`) count double when the board bothers to set
@@ -131,7 +148,8 @@ def score_skill_match(job: dict[str, Any], profile: dict[str, Any]) -> tuple[flo
     }
 
 
-def score_seniority_fit(job: dict[str, Any], profile: dict[str, Any]) -> tuple[float | None, dict]:
+def score_seniority_fit(job: dict[str, Any], profile: dict[str, Any],
+                     ctx: "ScoreContext | None" = None) -> tuple[float | None, dict]:
     """How well the job's level matches what the candidate is aiming for.
 
     Scored against `target_seniority` -- the level they WANT -- not the one they
@@ -186,7 +204,8 @@ def score_seniority_fit(job: dict[str, Any], profile: dict[str, Any]) -> tuple[f
     }
 
 
-def score_comp_signal(job: dict[str, Any], profile: dict[str, Any]) -> tuple[float | None, dict]:
+def score_comp_signal(job: dict[str, Any], profile: dict[str, Any],
+                     ctx: "ScoreContext | None" = None) -> tuple[float | None, dict]:
     """Pay, relative to what the profile is worth.
 
     Uses the stated range midpoint. MCF makes salary mandatory, so this is real
@@ -211,7 +230,8 @@ def score_comp_signal(job: dict[str, Any], profile: dict[str, Any]) -> tuple[flo
     }
 
 
-def score_competition(job: dict[str, Any], profile: dict[str, Any]) -> tuple[float | None, dict]:
+def score_competition(job: dict[str, Any], profile: dict[str, Any],
+                     ctx: "ScoreContext | None" = None) -> tuple[float | None, dict]:
     """How crowded this posting is. Higher score = less competition.
 
     This is the component the whole state layer exists for. On MCF it uses the
@@ -270,7 +290,8 @@ def score_competition(job: dict[str, Any], profile: dict[str, Any]) -> tuple[flo
     return max(0.0, min(100.0, score)), detail
 
 
-def score_freshness(job: dict[str, Any], profile: dict[str, Any]) -> tuple[float | None, dict]:
+def score_freshness(job: dict[str, Any], profile: dict[str, Any],
+                     ctx: "ScoreContext | None" = None) -> tuple[float | None, dict]:
     """How recently posted. Separate from competition so each is legible."""
     age = job.get("age_days")
     if age is None:
@@ -288,7 +309,8 @@ def score_freshness(job: dict[str, Any], profile: dict[str, Any]) -> tuple[float
     return score, detail
 
 
-def score_application_friction(job: dict[str, Any], profile: dict[str, Any]) -> tuple[float | None, dict]:
+def score_application_friction(job: dict[str, Any], profile: dict[str, Any],
+                     ctx: "ScoreContext | None" = None) -> tuple[float | None, dict]:
     """Directness of the application path. Higher = less friction.
 
     Agency postings mean a recruiter screen before anyone technical sees you,
@@ -301,12 +323,10 @@ def score_application_friction(job: dict[str, Any], profile: dict[str, Any]) -> 
     return 100.0, {"path": "direct employer ATS"}
 
 
-def score_company_signal(
-    job: dict[str, Any],
-    profile: dict[str, Any],
-    velocity: dict[str, dict[str, Any]] | None = None,
-) -> tuple[float | None, dict]:
+def score_company_signal(job: dict[str, Any], profile: dict[str, Any],
+                         ctx: "ScoreContext | None" = None) -> tuple[float | None, dict]:
     """Hiring posture. None until enough history exists -- never imputed."""
+    velocity = (ctx or ScoreContext()).velocity
     if not velocity:
         return None, {"reason": "no company history yet"}
     stats = velocity.get(job.get("company_norm") or "")
@@ -340,9 +360,16 @@ def check_filters(job: dict[str, Any], config: dict[str, Any]) -> str | None:
     if filters.get("open_only", True) and not job.get("is_open", True):
         return f"not open (status={job.get('source_status')})"
 
+    # Both sides go through norm_company. Comparing a raw string against an
+    # already-normalised one fails silently on any name carrying a legal suffix:
+    # 'bytedance' matched, but 'bytedance technology', 'TikTok Singapore' and
+    # 'Grab Holdings' did not -- because norm_company strips technology, sg,
+    # singapore, pte, ltd, holdings. You then get suggestions from the employer
+    # you explicitly excluded, which is the one filter people actually check.
     company = job.get("company_norm") or ""
     for excluded in filters.get("exclude_companies") or []:
-        if job_schema.norm_text(excluded).lower() in company:
+        needle = job_schema.norm_company(excluded)
+        if needle and needle in company:
             return f"excluded company ({excluded})"
 
     title = (job.get("title") or "").lower()
@@ -379,11 +406,18 @@ def check_filters(job: dict[str, Any], config: dict[str, Any]) -> str | None:
 # Aggregate
 # --------------------------------------------------------------------------
 
+# Every component has the same signature and lives in this tuple. company_signal
+# used to sit outside it, because it needed one extra argument -- and the copy of
+# the accumulate-and-renormalise block that came with it was missing the
+# try/except the loop has, so the one component most likely to hit missing data
+# was the one that could take down the whole job. A third context-needing
+# component (commute distance, wage benchmark) would have meant a third copy.
 _COMPONENTS = (
     ("skill_match", score_skill_match),
     ("seniority_fit", score_seniority_fit),
     ("comp_signal", score_comp_signal),
     ("competition", score_competition),
+    ("company_signal", score_company_signal),
     ("application_friction", score_application_friction),
     ("freshness", score_freshness),
 )
@@ -393,15 +427,21 @@ def score_job(
     job: dict[str, Any],
     config: dict[str, Any] | None = None,
     velocity: dict[str, dict[str, Any]] | None = None,
+    ctx: ScoreContext | None = None,
 ) -> dict[str, Any]:
     """Score one job. Writes into job['scores'] and returns it.
 
     Components that return None are dropped and the remaining weights
     renormalise, so a missing signal never silently counts as average.
+
+    `velocity` is accepted for compatibility with existing callers; prefer
+    passing a ScoreContext, which is where any future extra context belongs.
     """
     config = config or load_config()
     profile = config.get("profile") or {}
     weights = config.get("weights") or {}
+    if ctx is None:
+        ctx = ScoreContext(velocity=velocity or {})
 
     components: dict[str, Any] = {}
     weighted_sum = 0.0
@@ -409,7 +449,7 @@ def score_job(
 
     for name, func in _COMPONENTS:
         try:
-            value, detail = func(job, profile)
+            value, detail = func(job, profile, ctx)
         except Exception as exc:  # one bad component must not lose the job
             _warn(f"component {name} raised on {job.get('job_key')} ({exc})")
             value, detail = None, {"error": str(exc)}
@@ -419,14 +459,6 @@ def score_job(
         if value is not None and weight > 0:
             weighted_sum += value * weight
             weight_total += weight
-
-    value, detail = score_company_signal(job, profile, velocity)
-    weight = float(weights.get("company_signal", 0) or 0)
-    components["company_signal"] = {"value": None if value is None else round(value, 1),
-                                    "weight": weight, "detail": detail}
-    if value is not None and weight > 0:
-        weighted_sum += value * weight
-        weight_total += weight
 
     total = round(weighted_sum / weight_total, 1) if weight_total else 0.0
 

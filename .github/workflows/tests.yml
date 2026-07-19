@@ -1,0 +1,53 @@
+name: Tests
+
+# Deliberately separate from watch-deepseek-docs.yml. That workflow is a monthly
+# SENSOR against live docs; this one is a gate on every change. Bolting the test
+# suite onto a cron job means it runs twelve times a year -- which is how 86
+# tests came to exist without ever having run in CI.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Every suite here is offline: no network, no API key, no cost. Anything
+      # that needs a key belongs in test_deepseek.py, which is NOT run here.
+      - name: Pipeline tests
+        run: python -m unittest test_pipeline -v
+
+      - name: Scraper regression tests
+        run: python test_scrapers.py
+
+      # A guard against the failure mode this repo has already had once: a test
+      # file that exists but is never executed. If a test_*.py is added and not
+      # listed above, this fails loudly rather than being silently skipped.
+      - name: Every offline suite is wired into CI
+        run: |
+          set -e
+          expected="test_pipeline.py test_scrapers.py"
+          # test_deepseek.py is excluded on purpose: it needs a real API key.
+          found="$(ls test_*.py | grep -v '^test_deepseek.py$' | tr '\n' ' ' | sed 's/ $//')"
+          expected_sorted="$(echo $expected | tr ' ' '\n' | sort | tr '\n' ' ')"
+          found_sorted="$(echo $found | tr ' ' '\n' | sort | tr '\n' ' ')"
+          if [ "$expected_sorted" != "$found_sorted" ]; then
+            echo "::error::Test files on disk do not match the suites wired into CI."
+            echo "  in CI:    $expected_sorted"
+            echo "  on disk:  $found_sorted"
+            echo "Add the new suite to .github/workflows/tests.yml."
+            exit 1
+          fi
+          echo "All offline suites are wired in: $found_sorted"

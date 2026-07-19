@@ -73,6 +73,63 @@ def _mcf(**overrides):
     return record
 
 
+# --- shared factories -------------------------------------------------------
+# These are module-level on purpose. `_job` used to be a method on the Scoring
+# class, and three other classes reached through it as
+# `Scoring._job(Scoring(), ...)` -- an unbound call with a throwaway TestCase
+# built only to satisfy `self`. That construct also fails to import on Python
+# 3.10, an undeclared version dependency introduced by a workaround.
+
+def make_job(**overrides):
+    """A finalised canonical Job, ready to score."""
+    job = job_schema.new_job("mcf", overrides.pop("source_job_id", "test"))
+    job.update({
+        "title": "Machine Learning Engineer", "company": "Acme Pte Ltd",
+        "url": "https://example.com/j", "jd_text": "Build models.",
+        "seniority": "senior", "seniority_basis": "title",
+        "salary_min_sgd": 10000, "salary_max_sgd": 14000, "salary_is_stated": True,
+        "skills_raw": ["Machine Learning", "Python", "AWS"],
+        "applications": 5, "views": 100, "posted_at": "2026-07-15",
+        "vacancies": 1, "is_open": True,
+    })
+    job.update(overrides)
+    return job_schema.finalise(job)
+
+
+def make_config(**profile_overrides):
+    """A scoring config. Deep-copied so no test can corrupt another's fixture."""
+    import copy
+
+    config = copy.deepcopy(BASE_CONFIG)
+    config["profile"].update(profile_overrides)
+    return config
+
+
+BASE_CONFIG = {
+    "filters": {"singapore_only": True, "open_only": True,
+                "min_salary_sgd_monthly": 8000, "allow_unstated_salary": True,
+                "exclude_companies": ["tiktok"],
+                "exclude_title_patterns": [r"\bintern(ship)?\b"]},
+    "profile": {"target_seniority": "senior", "years_experience": 5,
+                "skills": {"expert": ["python", "machine learning"],
+                           "working": ["aws"]}},
+    "weights": {"skill_match": 30, "seniority_fit": 15, "comp_signal": 15,
+                "competition": 20, "company_signal": 10,
+                "application_friction": 5, "freshness": 5},
+}
+
+
+def with_resume(text, **kwargs):
+    """Build an IntakeProfile from resume text written to a temp file."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "cv.txt"
+        path.write_text(text, encoding="utf-8")
+        return user_input.build_profile(resume_path=path, **kwargs)
+
+
 class SeniorityResolution(unittest.TestCase):
     """MCF's positionLevels dropdown is unreliable and must not outrank the title.
 
@@ -423,7 +480,8 @@ class CompanyVelocity(unittest.TestCase):
 
         job = job_schema.new_job("mcf", "a")
         job["company_norm"] = "acme"
-        value, detail = scoring.score_company_signal(job, {}, stats)
+        value, detail = scoring.score_company_signal(
+            job, {}, scoring.ScoreContext(velocity=stats))
         self.assertIsNone(value)
         self.assertIn("insufficient history", detail["reason"])
 
@@ -503,14 +561,16 @@ class Scoring(unittest.TestCase):
 
 
 class HardFilters(unittest.TestCase):
-    CONFIG = Scoring.CONFIG
+    # A copy, not an alias. Scoring.CONFIG used to be the SAME object across
+    # four classes, so one test mutating a nested dict would corrupt the others
+    # order-dependently.
+    CONFIG = make_config()
 
     def _job(self, **overrides):
-        return Scoring._job(Scoring(), **overrides)
+        return make_job(**overrides)
 
     def test_current_employer_excluded(self):
         job = self._job(company="TikTok Pte Ltd")
-        job = job_schema.finalise(job)
         self.assertIn("excluded company", scoring.check_filters(job, self.CONFIG) or "")
 
     def test_salary_floor_uses_top_of_range(self):
@@ -712,13 +772,12 @@ class SeniorityAmbition(unittest.TestCase):
 
     def test_stretch_role_outranks_staying_put(self):
         """A mid-level candidate should see senior roles above mid roles."""
-        config = dict(Scoring.CONFIG)
-        config["profile"] = dict(config["profile"],
-                                 current_seniority="mid", target_seniority="senior")
+        profile = make_config(current_seniority="mid",
+                              target_seniority="senior")["profile"]
 
         def at(level):
-            job = Scoring._job(Scoring(), seniority=level, seniority_basis="title")
-            return scoring.score_seniority_fit(job, config["profile"])[0]
+            return scoring.score_seniority_fit(
+                make_job(seniority=level, seniority_basis="title"), profile)[0]
 
         self.assertGreater(at("senior"), at("mid"))
         self.assertGreater(at("lead"), at("junior"))
@@ -731,13 +790,12 @@ class SeniorityAmbition(unittest.TestCase):
         staying-put level higher. Job searches are for better pay or better
         rank; a safe sideways move is the thing being moved away from.
         """
-        config = dict(Scoring.CONFIG)
-        config["profile"] = dict(config["profile"],
-                                 current_seniority="mid", target_seniority="senior")
+        profile = make_config(current_seniority="mid",
+                              target_seniority="senior")["profile"]
 
         def at(level):
-            job = Scoring._job(Scoring(), seniority=level, seniority_basis="title")
-            return scoring.score_seniority_fit(job, config["profile"])[0]
+            return scoring.score_seniority_fit(
+                make_job(seniority=level, seniority_basis="title"), profile)[0]
 
         self.assertGreater(at("lead"), at("mid"),
                            "one level above target should beat one level below")

@@ -743,9 +743,17 @@ def confidentiality_report(profile: "IntakeProfile") -> list[str]:
 def to_run_config(profile: IntakeProfile, base: dict[str, Any] | None = None) -> dict[str, Any]:
     """Translate an intake profile into run_config.json shape.
 
-    Skills are placed in the `working` tier by default. Tiering is a judgement
-    the user must make -- claiming `expert` in everything the resume mentions is
-    how a tailored resume ends up overstating.
+    `base` supplies DEFAULTS ONLY -- weights, exclusion patterns, anything the
+    profile has no opinion about. Where both have a view, the profile wins,
+    because the profile came from the user's actual resume and the JSON is a
+    checked-in file they may never have opened.
+
+    That precedence was inverted once, with a silent and expensive result: the
+    guard read `if profile.skills and not existing`, and `existing` was never
+    falsy because run_config.json always ships a populated skills block. Every
+    resume-derived skill was discarded, so the heaviest scoring component ran
+    entirely on the checked-in defaults while the notebook told the user
+    otherwise. Precedence is now unconditional and tested.
     """
     import copy
 
@@ -761,7 +769,7 @@ def to_run_config(profile: IntakeProfile, base: dict[str, Any] | None = None) ->
     if profile.min_salary_sgd_monthly:
         filters["min_salary_sgd_monthly"] = profile.min_salary_sgd_monthly
     if profile.exclude_companies:
-        filters["exclude_companies"] = [c.lower() for c in profile.exclude_companies]
+        filters["exclude_companies"] = list(profile.exclude_companies)
     filters["exclude_agencies"] = profile.exclude_agencies
 
     target = config["profile"]
@@ -769,11 +777,7 @@ def to_run_config(profile: IntakeProfile, base: dict[str, Any] | None = None) ->
     target["current_seniority"] = profile.current_seniority
     target["years_experience"] = profile.years_experience
     target["current_salary_sgd_monthly"] = profile.current_salary_sgd_monthly
-    existing = target.get("skills") or {}
-    if profile.skills and not existing:
-        target["skills"] = {"expert": [], "working": profile.skills, "familiar": []}
-    else:
-        target["skills"] = existing
+    target["skills"] = merge_skill_tiers(profile.skills, target.get("skills"))
 
     if profile.target_roles:
         config["scopes"] = [{
@@ -784,3 +788,38 @@ def to_run_config(profile: IntakeProfile, base: dict[str, Any] | None = None) ->
         }]
 
     return config
+
+
+def merge_skill_tiers(
+    derived: list[str] | None,
+    configured: dict[str, list[str]] | None,
+) -> dict[str, list[str]]:
+    """Combine resume-derived skills with hand-tiered ones from run_config.json.
+
+    Both matter, and neither should silently win:
+
+      - The configured tiers carry a judgement only the user can make. Claiming
+        `expert` in everything a resume mentions is how a tailored resume ends
+        up overstating, so a skill the user has deliberately tiered keeps that
+        tier.
+      - A skill the resume evidences but the user never tiered still belongs in
+        the profile. Dropping it means the job asking for it reads as a gap.
+
+    So: configured tiers win for skills they mention; everything else derived
+    lands in `working`. Never `expert` -- that is the user's call to promote.
+    """
+    import skills_taxonomy
+
+    tiers: dict[str, list[str]] = {"expert": [], "working": [], "familiar": []}
+    for tier in tiers:
+        for skill in (configured or {}).get(tier, []) or []:
+            if skill not in tiers[tier]:
+                tiers[tier].append(skill)
+
+    already = {skills_taxonomy.canon(s) for group in tiers.values() for s in group}
+    for skill in derived or []:
+        if skills_taxonomy.canon(skill) not in already:
+            tiers["working"].append(skill)
+            already.add(skills_taxonomy.canon(skill))
+
+    return tiers
