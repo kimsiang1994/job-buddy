@@ -24,3 +24,28 @@ usage_log.jsonl
 *.tmp
 # Downloaded by fetch_tokenizer.py; several MB, reproducible on demand.
 tokenizer/
+
+# Personal source documents. This repo is PUBLIC -- the resume PDF contains a
+# real name, personal email, phone number and full employment history. It must
+# never be committed. .worktreeinclude does not copy it either; point
+# import_resume.py at a local path instead.
+input/
+profile/master_profile.json
+profile/master_profile.draft.json
+
+# Pipeline run artefacts. All reproducible by re-running, all machine-local.
+#   state/sightings.jsonl  is YOUR observation history -- it is the one thing
+#   here that cannot be regenerated, but it is also personal job-search data and
+#   this repo is public, so it stays local. Back it up separately if you care.
+state/
+potential applications/
+
+# Claude Code creates isolated worktrees here for parallel work.
+# Without this they show up as untracked files in the main checkout.
+.claude/worktrees/
+
+# Machine-specific: accumulates "don't ask again" permission rules with absolute
+# Windows paths and one-off commands. Useless to anyone else, and this repo is
+# public, so it should never be committed.
+.claude/settings.json
+.claude/settings.local.json

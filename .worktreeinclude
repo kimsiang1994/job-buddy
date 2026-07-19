@@ -1,0 +1,13 @@
+# Files copied into every new git worktree Claude Code creates.
+#
+# A worktree is a fresh checkout, so gitignored files do not exist in it. Without
+# this list a worktree would have no .env, and every script here would fail with
+# "DEEPSEEK_API_KEY not found" -- which looks like a broken key rather than a
+# missing file.
+#
+# Uses .gitignore syntax. Only files that match AND are gitignored are copied,
+# so tracked files are never duplicated.
+#
+# Note: this does put the API key in each worktree directory. They live under
+# .claude/worktrees/ which is gitignored, so it never reaches the remote.
+.env
