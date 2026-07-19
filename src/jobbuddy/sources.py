@@ -35,6 +35,7 @@ from jobbuddy import (
     source_ats,
     source_hn,
     source_mcf,
+    source_partner_api,
     source_workable,
 )
 
@@ -58,6 +59,11 @@ class Source:
 
     def available(self) -> tuple[bool, str]:
         """(usable now, why not). Never raises."""
+        if self.name == "partner":
+            configured = source_partner_api.available()
+            if not any(configured.values()):
+                return False, "no CAREERJET_API_KEY or JOOBLE_API_KEY in .env"
+            return True, ", ".join(k for k, v in configured.items() if v)
         if self.name == "aggregator":
             configured = source_aggregator.available()
             if not any(configured.values()):
@@ -80,6 +86,9 @@ SOURCES: list[Source] = [
            note="direct employer boards -- freshest, needs discovery"),
     Source("hn", source_hn.fetch_jobs, enabled_by_default=False,
            note="HN Who is Hiring -- senior remote, monthly thread"),
+    Source("partner", source_partner_api.fetch_jobs, enabled_by_default=False,
+           needs_key=True,
+           note="Careerjet/Jooble -- free keys, broad aggregate SG coverage"),
     Source("aggregator", source_aggregator.fetch_jobs, enabled_by_default=False,
            needs_key=True, costs_money=True,
            note="JSearch/Adzuna -- reaches LinkedIn, Indeed, Glassdoor, JobStreet"),

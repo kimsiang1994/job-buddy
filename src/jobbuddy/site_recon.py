@@ -43,6 +43,17 @@ NAMED_AGENTS = ("ClaudeBot", "anthropic-ai", "Claude-Web", "GPTBot",
 
 OUR_AGENT = "job-buddy"
 
+# Analytics, ads and tag managers. They fire on every page and quote the page
+# they fired from, so they look like whatever you are searching for.
+THIRD_PARTY_HOSTS = (
+    "google-analytics", "googletagmanager", "doubleclick", "ads.linkedin",
+    "facebook.net", "facebook.com", "hotjar", "segment.io", "segment.com",
+    "mixpanel", "amplitude", "sentry.io", "datadoghq", "newrelic",
+    "cloudflareinsights", "clarity.ms", "bing.com", "criteo", "adsrvr",
+    "googleadservices", "gstatic", "cookielaw", "onetrust", "intercom",
+    "fullstory", "heap.io", "optimizely", "quantserve", "scorecardresearch",
+)
+
 JSONLD_RE = re.compile(
     r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
     re.S | re.I)
@@ -187,21 +198,46 @@ def check_robots(url: str) -> dict[str, Any]:
     return out
 
 
+JOB_PATH_RE = re.compile(r"job|vacanc|position|opportunit|career", re.I)
+
+
+def _looks_like_job_url(url: str) -> bool:
+    """Does the PATH look like a job listing, ignoring the hostname?
+
+    Matching the whole URL reported careers.gov.sg as having 20 job sitemaps --
+    every entry matched, because the hostname contains 'careers'. It has 22
+    static pages and no job URLs at all. A site's own name says nothing about
+    what a given page is.
+    """
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path
+    if not path or path in ("/", ""):
+        return False
+    # A real job URL has an identifier in it, not just a section name.
+    has_identifier = bool(re.search(r"\d{3,}|[0-9a-f]{8,}|-[a-z0-9]{6,}$", path, re.I))
+    return bool(JOB_PATH_RE.search(path)) and has_identifier
+
+
 def find_job_sitemaps(sitemaps: list[str], limit: int = 3) -> list[str]:
-    """Follow sitemap indexes to the ones that look like job listings."""
+    """Follow sitemap indexes to the ones that actually list job pages."""
     found: list[str] = []
     for sitemap in sitemaps[:limit]:
         result = net.fetch(sitemap, accept="application/xml", cache_ttl_s=86400.0)
         if not result.ok:
             continue
-        body = result.text()[:200000]
+        body = result.text()[:400000]
         children = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", body)
-        if any(re.search(r"job|career|vacanc|position", c, re.I) for c in children):
-            found.extend(c for c in children
-                         if re.search(r"job|career|vacanc|position", c, re.I))
-        elif children and sitemap.endswith(("index.xml", "_index.xml")):
-            found.extend(children[:5])
-    return found[:20]
+
+        job_urls = [c for c in children if _looks_like_job_url(c)]
+        if job_urls:
+            found.extend(job_urls)
+            continue
+        # A sitemap index points at more sitemaps; follow those whose own path
+        # mentions jobs, which is how the big boards shard them.
+        nested = [c for c in children
+                  if c.endswith((".xml", ".xml.gz")) and JOB_PATH_RE.search(c)]
+        found.extend(nested[:5])
+    return found[:50]
 
 
 def inspect_page(url: str, timeout: int = 40) -> dict[str, Any]:
@@ -279,11 +315,24 @@ def inspect_page(url: str, timeout: int = 40) -> dict[str, Any]:
     out["feeds"] = FEED_RE.findall(html)[:5]
 
     # Rank captured calls by how much they look like a job search endpoint.
+    #
+    # Scored on host and path only. Including the query string ranked a
+    # LinkedIn ad pixel top on Tech in Asia, because the page URL it was
+    # reporting sat inside its parameters and contained the word "jobs".
+    # Analytics beacons quote the page they fire from, so a query-string match
+    # says nothing about the endpoint itself.
+    site_host = _host(url)
+
     def score(call: dict[str, Any]) -> int:
-        url_lower = call["url"].lower()
+        parsed = urllib.parse.urlparse(call["url"])
+        host, path = parsed.netloc.lower(), parsed.path.lower()
+
+        if any(tracker in host for tracker in THIRD_PARTY_HOSTS):
+            return -99
         points = sum(3 for word in ("job", "vacanc", "position", "search",
-                                    "listing", "posting") if word in url_lower)
-        points += 2 if "/api/" in url_lower or "/graphql" in url_lower else 0
+                                    "listing", "posting") if word in path)
+        points += 2 if "/api/" in path or "graphql" in path else 0
+        points += 2 if host.endswith(site_host.split(".", 1)[-1]) else 0
         points += 1 if call["status"] == 200 else -5
         return points
 

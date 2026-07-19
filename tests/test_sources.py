@@ -568,3 +568,124 @@ class ExclusionPolicy(unittest.TestCase):
                     "https://nodeflair.com/jobs", "https://sg.jobstreet.com/jobs"):
             with self.subTest(url=url):
                 self.assertEqual(fetcher.strategy_for(url), "unblocker")
+
+
+class PartnerApis(unittest.TestCase):
+    """Careerjet and Jooble. Documented, free-key, affiliate-model aggregators.
+
+    Both want to be consumed -- traffic back is their business -- which makes
+    them the cleanest broad-coverage sources available.
+    """
+
+    CAREERJET = {
+        "title": "Senior Machine Learning Engineer",
+        "company": "Acme Pte Ltd",
+        "url": "https://www.careerjet.com.sg/jobad/sgabc123",
+        "description": "<p>Build models with Python and AWS.</p>",
+        "locations": "Singapore",
+        "date": "2026-07-18",
+        "salary_min": "120000", "salary_max": "180000", "salary_type": "Y",
+        "site": "jobstreet.com.sg",
+    }
+    JOOBLE = {
+        "id": 998877,
+        "title": "AI Engineer",
+        "company": "Contoso",
+        "link": "https://sg.jooble.org/jdp/998877",
+        "snippet": "Work on LLM pipelines...",
+        "location": "Singapore",
+        "updated": "2026-07-17T00:00:00",
+        "salary": "SGD 9,000 - 14,000 per month",
+        "source": "glints.com",
+    }
+
+    def test_careerjet_maps_and_validates(self):
+        from jobbuddy import source_partner_api as partner
+
+        job = partner._careerjet_to_job(self.CAREERJET)
+        self.assertIsNotNone(job)
+        self.assertEqual(job["company"], "Acme Pte Ltd")
+        self.assertEqual(job["seniority"], "senior")
+        self.assertEqual(job_schema.validate_job(job), [])
+
+    def test_careerjet_annual_salary_becomes_monthly(self):
+        from jobbuddy import source_partner_api as partner
+
+        job = partner._careerjet_to_job(self.CAREERJET)
+        # 120k-180k a year is 10k-15k a month, not 120k a month.
+        self.assertEqual(job["salary_min_sgd"], 10000)
+        self.assertEqual(job["salary_max_sgd"], 15000)
+        self.assertTrue(job["salary_is_stated"])
+
+    def test_careerjet_identity_is_stable_without_an_id_field(self):
+        """Careerjet publishes no id, so the URL has to be the identity.
+
+        An unstable key would make every run report every job as new and
+        destroy the whole competition-over-time signal.
+        """
+        from jobbuddy import source_partner_api as partner
+
+        first = partner._careerjet_to_job(dict(self.CAREERJET))
+        second = partner._careerjet_to_job(dict(self.CAREERJET))
+        self.assertEqual(first["job_key"], second["job_key"])
+
+    def test_jooble_parses_salary_from_free_text(self):
+        from jobbuddy import source_partner_api as partner
+
+        job = partner._jooble_to_job(self.JOOBLE)
+        self.assertEqual(job["salary_min_sgd"], 9000)
+        self.assertEqual(job["salary_max_sgd"], 14000)
+
+    def test_jooble_records_which_board_it_came_from(self):
+        from jobbuddy import source_partner_api as partner
+
+        job = partner._jooble_to_job(self.JOOBLE)
+        self.assertEqual(job["_provenance"]["origin_board"], "glints.com")
+
+    def test_reports_unavailable_without_keys(self):
+        import os
+
+        from jobbuddy import source_partner_api as partner
+
+        saved = {k: os.environ.pop(k, None)
+                 for k in ("CAREERJET_API_KEY", "JOOBLE_API_KEY")}
+        try:
+            jobs, counters = partner.fetch_jobs("ml engineer")
+            self.assertEqual(jobs, [])
+            self.assertEqual(counters.get("skipped_no_key"), 1)
+        finally:
+            for key, value in saved.items():
+                if value is not None:
+                    os.environ[key] = value
+
+
+class SitemapJobDetection(unittest.TestCase):
+    """A sitemap entry is a job URL only if its PATH says so.
+
+    Matching the whole URL reported careers.gov.sg as having 20 job sitemaps --
+    every entry matched, because the hostname contains 'careers'. It has 22
+    static pages and no job URLs at all.
+    """
+
+    def test_hostname_alone_does_not_make_a_job_url(self):
+        from jobbuddy import site_recon
+
+        self.assertFalse(site_recon._looks_like_job_url("https://www.careers.gov.sg/"))
+        self.assertFalse(site_recon._looks_like_job_url("https://www.careers.gov.sg/faqs/"))
+
+    def test_a_real_job_url_is_recognised(self):
+        from jobbuddy import site_recon
+
+        for url in ("https://example.com/job/senior-engineer-a1b2c3d4",
+                    "https://example.com/jobs/123456",
+                    "https://example.com/careers/vacancy/998877"):
+            with self.subTest(url=url):
+                self.assertTrue(site_recon._looks_like_job_url(url))
+
+    def test_analytics_beacons_are_not_job_apis(self):
+        """A LinkedIn ad pixel ranked top on Tech in Asia because the page URL
+        it was reporting sat in its query string and contained 'jobs'."""
+        from jobbuddy import site_recon
+
+        self.assertIn("ads.linkedin", site_recon.THIRD_PARTY_HOSTS)
+        self.assertIn("googletagmanager", site_recon.THIRD_PARTY_HOSTS)

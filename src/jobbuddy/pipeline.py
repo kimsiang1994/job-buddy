@@ -104,6 +104,9 @@ def _all_sources(enabled: list[str] | None = None) -> Callable[..., tuple[list[d
         )
         flat: dict[str, int] = {}
         for name, counts in per_source.items():
+            if name.startswith("_"):
+                # `_vocab` is bookkeeping from the skill harvest, not a source.
+                continue
             flat[f"{name}_kept"] = counts.get("kept", 0)
             for key in ("invalid", "unusable", "error"):
                 if counts.get(key):
@@ -232,6 +235,16 @@ def run(
     jobs, counters, excluded = collect(
         scope, config, limit=limit, cache_ttl_s=cache_ttl_s, fetch_jobs=fetch_jobs
     )
+
+    # Companies seen become the discovery queue. Every search widens the
+    # company-to-board map, so coverage compounds rather than staying flat.
+    from jobbuddy import company_registry
+
+    company_registry.observe(jobs, scope.get("name", ""))
+    if (config.get("sources") or {}).get("discover_ats_boards", True) and not dry_run:
+        company_registry.run_discovery(
+            limit=(config.get("sources") or {}).get("discovery_limit_per_run", 12),
+            scope=scope.get("name", ""))
 
     observation = history.observe(jobs, run_id, record=not dry_run, snapshot=not dry_run)
 

@@ -74,6 +74,150 @@
       "website": "http://www.blockchainclimateinstitute.org",
       "via": "discovery",
       "note": "no ATS found"
+    },
+    "ocbc": {
+      "vendor": "workday",
+      "token": "ocbc|wd102|External",
+      "website": "",
+      "via": "seeded",
+      "jobs_seen": 996
+    },
+    "uob": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.uobgroup.com/careers/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "dbs": {
+      "vendor": "workday",
+      "token": "dbs|wd3|DBS_Careers",
+      "website": "https://www.dbs.com/careers/default.page",
+      "via": "discovery"
+    },
+    "gic": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.gic.com.sg/careers/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "temasek": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.temasek.com.sg/en/careers",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "grab": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.grab.careers/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "sea": {
+      "vendor": null,
+      "token": null,
+      "website": "https://career.sea.com/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "standard chartered": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.sc.com/en/careers/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "maybank": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.maybank.com/en/careers.page",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "singtel": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.singtel.com/about-us/careers",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "sats": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.sats.com.sg/careers",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "razer": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.razer.com/careers",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "nium": {
+      "vendor": "lever",
+      "token": "nium",
+      "website": "https://www.nium.com/careers",
+      "via": "discovery"
+    },
+    "circles": {
+      "vendor": "workday",
+      "token": "circles|wd103|Circles",
+      "website": "https://circles.co/careers",
+      "via": "discovery"
+    },
+    "carousell": {
+      "vendor": null,
+      "token": null,
+      "website": "https://careers.carousell.com/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "ninjavan": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.ninjavan.co/en-sg/careers",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "shopback": {
+      "vendor": null,
+      "token": null,
+      "website": "https://careers.shopback.com/",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "aspire": {
+      "vendor": null,
+      "token": null,
+      "website": "https://aspireapp.com/careers",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "endowus": {
+      "vendor": null,
+      "token": null,
+      "website": "https://endowus.com/careers",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "stashaway": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.stashaway.sg/careers",
+      "via": "discovery",
+      "note": "no ATS found"
+    },
+    "thoughtworks": {
+      "vendor": null,
+      "token": null,
+      "website": "https://www.thoughtworks.com/careers",
+      "via": "discovery",
+      "note": "no ATS found"
     }
   }
 }
