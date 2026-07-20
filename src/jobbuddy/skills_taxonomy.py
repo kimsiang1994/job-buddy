@@ -149,11 +149,139 @@ _NOISE_PATTERNS = (
 )
 _NOISE_RE = tuple(re.compile(p, re.I) for p in _NOISE_PATTERNS)
 
+# --------------------------------------------------------------------------
+# Compound advert phrases.
+#
+# The patterns above are anchored against single generic words, so every
+# multi-word advert phrase walked straight past them: 'Liaising with cross
+# functional teams' (126 postings), 'Data Solutions', 'Analytical and
+# Problem-Solving Skills', 'Extensive Work Experience'. Measured on the real
+# 331-job corpus, the top 'missing skills' for the largest cluster were about
+# half phrases of this shape, sitting at the same document frequency as AI
+# Evaluation and CI/CD -- so the development plan could not be read.
+#
+# The distinction being encoded: a SKILL is a thing you can learn, name and be
+# tested on ('Kubernetes', 'Bayesian modelling', 'CI/CD'). An ADVERT PHRASE
+# describes a behaviour, a soft quality, or a generic activity ('liaising with
+# stakeholders', 'attention to detail', 'design' as a bare noun).
+#
+# Every rule below is a curated list rather than a productive heuristic,
+# because the error directions are not symmetric -- see `is_advert_phrase`.
+# --------------------------------------------------------------------------
+
+# 1. Verb- and gerund-led phrases. The head is an ACTION the post-holder
+#    performs, not a capability they hold. Matched on the FIRST word only, so
+#    'Model Training' and 'Data Wrangling' are untouched.
+#
+#    'design' and 'test' are deliberately absent: 'Design Patterns' and 'Test
+#    Automation' are real, and the bare nouns are handled separately.
+_ACTIVITY_VERBS = (
+    "liais(?:e|es|ed|ing)", "collaborat(?:e|es|ed|ing)", "engag(?:e|es|ed|ing)",
+    "communicat(?:e|es|ed|ing)", "interfac(?:e|es|ed|ing)", "partner(?:s|ed|ing)?",
+    "coordinat(?:e|es|ed|ing)", "manag(?:e|es|ed|ing)", "work(?:s|ed|ing)",
+    "build(?:s|ing)?", "creat(?:e|es|ed|ing)", "gather(?:s|ed|ing)?",
+    "driv(?:e|es|ing)", "improv(?:e|es|ed|ing)", "interpret(?:s|ed|ing)?",
+    "meet(?:s|ing)?", "optimis(?:e|es|ed|ing)", "optimiz(?:e|es|ed|ing)",
+    "resolv(?:e|es|ed|ing)", "solv(?:e|es|ed|ing)", "translat(?:e|es|ed|ing)",
+    "provid(?:e|es|ed|ing)", "deliver(?:s|ed|ing)?", "implement(?:s|ed|ing)?",
+    "lead(?:s|ing)?", "assist(?:s|ed|ing)?", "ensur(?:e|es|ed|ing)",
+    "perform(?:s|ed|ing)?", "conduct(?:s|ed|ing)?", "participat(?:e|es|ed|ing)",
+    "contribut(?:e|es|ed|ing)", "articulat(?:e|es|ed|ing)",
+)
+_ACTIVITY_LED_RE = re.compile(
+    r"^(?:" + "|".join(_ACTIVITY_VERBS) + r")\s+\S", re.I)
+
+# 2. Soft-quality vocabulary. Anywhere in the phrase, these mark a disposition
+#    rather than a skill. The single-word forms are already covered above; this
+#    is what catches them inside a compound.
+_SOFT_QUALITY_RE = re.compile(
+    r"\b(?:attention to detail|interpersonal|teamwork|team player|"
+    r"soft skills?|work ethic|track record|fast[- ]paced|enthusiasm|"
+    r"proficiency|aptitude|multitask\w*|dependability|accountability|"
+    r"self[- ]starter|can[- ]do|hands[- ]on|eagerness|willing\w*|"
+    r"ambiguity)\b", re.I)
+# 'integrity', 'autonomy' and 'diligence' were tried here and removed: they
+# cost 'Data Integrity' and 'Autonomy iManage', both real, and bought nothing
+# the bare-noun list below does not already catch.
+
+# 3. '<adjective> skills' -- the adjective never makes it nameable.
+_SOFT_SKILLS_RE = re.compile(
+    r"\b(?:soft|presentation|communication|interpersonal|analytical|people|"
+    r"organisational|organizational|mathematical|technical|computer|"
+    r"leadership|problem[- ]solving|writing|listening|numerical|"
+    r"developing|transferable)\s+skills?\b|\bskillset\b", re.I)
+
+# 4. Filler HEAD nouns. A phrase whose final word is one of these names a
+#    quantity of something rather than the something: 'Data Solutions',
+#    'Solution Delivery', 'Technology Expertise', 'Industry Experience'.
+#    Only fires when the phrase carries no technical anchor (see below), so
+#    'Enterprise Security Solutions' survives on the strength of 'security'.
+_FILLER_HEADS = frozenset({
+    "solution", "solutions", "delivery", "capability", "capabilities",
+    "experience", "knowledge", "expertise", "proficiency", "approach",
+    "environment", "environments", "mindset", "culture", "awareness",
+    "exposure", "understanding", "familiarity", "background",
+})
+
+# 5. '<something> of <something>' constructions: 'knowledge of data
+#    networking', 'analysis of business problems'. The leading noun is the
+#    filler; whatever follows is a topic, not a named skill.
+_OF_PHRASE_RE = re.compile(
+    r"^(?:knowledge|understanding|awareness|appreciation|familiarity|"
+    r"experience|exposure|analysis|application)\s+of\b", re.I)
+
+# 6. Bare abstract nouns. Curated ONE BY ONE rather than derived, because the
+#    productive version of this rule is what deleted Python and AWS from an
+#    earlier build. Each entry is a word that names no capability standing
+#    alone, and each was read off the real corpus before being added.
+#
+#    Notably ABSENT, and left in on purpose: 'debugging', 'monitoring',
+#    'orchestration', 'optimization', 'classification', 'segmentation',
+#    'reproducibility', 'traceability', 'vision', 'writing', 'research',
+#    'testing', 'deployment', 'evaluation', 'validation'. Every one of those
+#    is arguable, and arguable means keep.
+_BARE_ABSTRACT_NOUNS = frozenset({
+    "design", "development", "management", "operations", "adoption",
+    "solutions", "solution", "budget", "certifications", "certification",
+    "conferences", "journals", "internships", "education", "tenure",
+    "registration", "diversity", "lifestyle", "autonomy", "accountability",
+    "enthusiasm", "professionalism", "seniority", "responsibilities",
+})
+
+# A phrase this long has stopped naming a skill and started describing a job.
+# Counted in MEANINGFUL tokens and only applied to a term with no technical
+# anchor, which is what keeps 'Software as a Service (SaaS)' and 'BIRT
+# (Business Intelligence and Reporting Tools)' -- both real, both long. Set at
+# six rather than the five originally tried for exactly that reason: at five it
+# was eating product names, and this rule is a backstop, not a workhorse.
+_TOO_MANY_WORDS = 6
+
+# Taxonomy canonicals that are ALSO bare abstract nouns.
+#
+# These are the one place the protect-known-terms rule is deliberately
+# overridden, and only for the bare single-word surface form. 'Scalability'
+# alone is advert copy -- nobody can act on "learn Scalability" -- but
+# 'Scalable Systems', 'Distributed Systems' and 'High Availability' all
+# canonicalise to it and ARE nameable, so they are matched on their surface
+# form and survive. Keep this set tiny and keep it explicit.
+_ABSTRACT_TAXONOMY_TERMS = frozenset({"scalability"})
+
 _PUNCT_RE = re.compile(r"[^a-z0-9+#]+")
 _STOPWORDS = frozenset({
     "and", "or", "the", "a", "an", "of", "for", "with", "in", "on", "to",
     "using", "based", "related", "various", "other", "etc",
 })
+
+
+def surface(term: Any) -> str:
+    """Normalised text of a term WITHOUT alias substitution.
+
+    `canon` folds 'High Availability' onto 'scalability', which is right for
+    matching and wrong for judging the shape of what the board actually wrote.
+    Anything reasoning about the words in front of it wants this.
+    """
+    text = _PUNCT_RE.sub(" ", str(term or "").lower().strip())
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def canon(term: Any) -> str:
@@ -170,12 +298,92 @@ def canon(term: Any) -> str:
     return ALIASES.get(text, text)
 
 
+def has_technical_anchor(term: Any) -> bool:
+    """True when some run of words in the term is a known taxonomy entry.
+
+    Checked over contiguous n-grams, longest first, so 'Enterprise Security
+    Solutions' anchors on 'security' and 'Generative AI Application
+    Development and Deployment in Financial Services' anchors on 'generative
+    ai'. A term with an anchor is naming something real even when it is
+    wrapped in advert packaging, so the shape-based rules stand down.
+
+    Deliberately NOT the same as "every word appears somewhere in the
+    taxonomy": 'data' appears inside 'data engineering', which would have
+    anchored 'Data Solutions' and defeated the whole filter. Only whole
+    taxonomy keys count.
+    """
+    words = canon(term).split()
+    for size in range(len(words), 0, -1):
+        for start in range(len(words) - size + 1):
+            if " ".join(words[start:start + size]) in ALIASES:
+                return True
+    return False
+
+
+def is_advert_phrase(term: Any) -> bool:
+    """True when a term is job-advert copy rather than a nameable skill.
+
+    A skill is a thing you can learn, name and be tested on -- 'Kubernetes',
+    'Bayesian modelling', 'CI/CD'. An advert phrase describes a behaviour, a
+    soft quality, or a generic activity -- 'Liaising with cross functional
+    teams', 'attention to detail', 'Design' as a bare noun.
+
+    BIASED TOWARD KEEPING, on purpose, and the bias is not symmetric. A term
+    wrongly dropped disappears from the denominator, so the candidate's
+    coverage reads HIGHER than it is and a genuine gap silently vanishes from
+    the development plan -- a wrong answer nobody can see. A term wrongly kept
+    is merely a piece of visible clutter in a list. So anything arguable stays,
+    every rule here is a curated list rather than a productive heuristic, and
+    anything carrying a known taxonomy term is exempt from all of them but one
+    (see `_ABSTRACT_TAXONOMY_TERMS`).
+    """
+    canonical = canon(term)
+    if not canonical:
+        return True
+
+    words = canonical.split()
+
+    # The single documented override of taxonomy protection: a bare abstract
+    # noun that happens to head an alias group. Tested on the SURFACE form, so
+    # 'Scalability' goes and 'High Availability' -- which canonicalises onto it
+    # -- stays.
+    if surface(term) in _ABSTRACT_TAXONOMY_TERMS:
+        return True
+
+    # Protection. A known taxonomy term is a skill by construction, whatever
+    # shape it arrives in. An earlier filter dropped Python, AWS and API on
+    # frequency alone; this is the guard against repeating that.
+    if canonical in ALIASES:
+        return False
+
+    if canonical in _BARE_ABSTRACT_NOUNS:
+        return True
+
+    if _SOFT_QUALITY_RE.search(canonical) or _SOFT_SKILLS_RE.search(canonical):
+        return True
+
+    if len(words) > 1:
+        if _ACTIVITY_LED_RE.search(canonical) or _OF_PHRASE_RE.search(canonical):
+            return True
+
+    anchored = has_technical_anchor(canonical)
+    if anchored:
+        return False
+
+    if len(words) > 1 and words[-1] in _FILLER_HEADS:
+        return True
+
+    return len(tokens(canonical)) >= _TOO_MANY_WORDS
+
+
 def is_noise(term: Any) -> bool:
     """True when a term is extraction garbage rather than a real skill."""
     text = str(term or "").strip()
     if not text:
         return True
-    return any(pattern.search(text) for pattern in _NOISE_RE)
+    if any(pattern.search(text) for pattern in _NOISE_RE):
+        return True
+    return is_advert_phrase(text)
 
 
 def tokens(term: str) -> frozenset[str]:

@@ -604,6 +604,15 @@ def _prepare_job(job: dict[str, Any], profile: dict[str, Any],
     no shared state -- which is what makes running N of these at once safe.
     Every failure is returned rather than raised, so one job cannot take the
     pool down with it.
+
+    Every catch here records `traceback` alongside `error`, without exception.
+    Isolation is what keeps one bad job from losing nineteen good ones; it is
+    not a licence to throw the evidence away. A report that says only
+    "AttributeError: 'NoneType' object has no attribute 'get'" names no file and
+    no line, and an intermittent failure cannot be re-run on demand to recover
+    what was discarded -- two wrong diagnoses in this codebase were bought
+    exactly that way. `error` is the readable one-liner for the workbook;
+    `traceback` is the evidence, and it lands on `TailorOutcome.detail`.
     """
     from jobbuddy import render_resume, resume_rules
     from jobbuddy import tailor as tailor_module
@@ -613,10 +622,6 @@ def _prepare_job(job: dict[str, Any], profile: dict[str, Any],
             profile, job, _requirements_for(job), chat=chat,
             max_bullets=max_bullets, strategy_names=strategy_names)
     except Exception as exc:  # one job's model call must not lose the others
-        # Keep the traceback. Isolation without it produces reports like
-        # "AttributeError: 'NoneType' object has no attribute 'get'" with no
-        # file and no line, which is barely more useful than silence -- and an
-        # intermittent failure cannot be reproduced on demand to recover it.
         return {"stage": "tailor", "error": f"{type(exc).__name__}: {exc}",
                 "traceback": traceback.format_exc()}
 
@@ -630,13 +635,15 @@ def _prepare_job(job: dict[str, Any], profile: dict[str, Any],
         model = render_resume.build_model(profile, tailored)
     except Exception as exc:
         return {"stage": "build_model", "cost_usd": cost,
-                "error": f"{type(exc).__name__}: {exc}"}
+                "error": f"{type(exc).__name__}: {exc}",
+                "traceback": traceback.format_exc()}
 
     try:
         report = resume_rules.check(model)
     except Exception as exc:
         return {"stage": "rules", "cost_usd": cost,
-                "error": f"{type(exc).__name__}: {exc}"}
+                "error": f"{type(exc).__name__}: {exc}",
+                "traceback": traceback.format_exc()}
 
     return {"ok": True, "cost_usd": cost, "tailored": tailored,
             "model": model, "report": report}
@@ -649,6 +656,13 @@ def _write_job(job: dict[str, Any], prepared: dict[str, Any],
 
     Called only from `tailor_jobs`, one job at a time, because these are the
     only calls in the stage that touch the filesystem.
+
+    Same evidence rule as `_prepare_job`: every catch sets `outcome.detail` to
+    the traceback. These are the harder failures of the two to diagnose -- a
+    render or a PDF read fails against one specific job's data, on one machine,
+    and "KeyError: 'org'" without a frame does not say whose data or which
+    layer. `reason` stays the readable workbook line; `detail` carries the
+    frames.
     """
     from jobbuddy import render_report, render_resume, resume_rules
 
@@ -681,6 +695,7 @@ def _write_job(job: dict[str, Any], prepared: dict[str, Any],
     except Exception as exc:
         outcome.status = "FAILED_AT_render_resume"
         outcome.reason = f"{type(exc).__name__}: {exc}"
+        outcome.detail = traceback.format_exc()
         return outcome
 
     outcome.pages = rendered.get("pages")
@@ -700,6 +715,7 @@ def _write_job(job: dict[str, Any], prepared: dict[str, Any],
         except Exception as exc:
             outcome.status = "FAILED_AT_page_one_sufficiency"
             outcome.reason = f"{type(exc).__name__}: {exc}"
+            outcome.detail = traceback.format_exc()
             return outcome
     else:
         outcome.page_one = {"ok": None, "missing": [],
@@ -712,6 +728,7 @@ def _write_job(job: dict[str, Any], prepared: dict[str, Any],
     except Exception as exc:
         outcome.status = "FAILED_AT_render_report"
         outcome.reason = f"{type(exc).__name__}: {exc}"
+        outcome.detail = traceback.format_exc()
         return outcome
 
     if written.get("path"):
@@ -778,9 +795,16 @@ def tailor_jobs(jobs: list[dict[str, Any]],
                 try:
                     prepared_by_position[position] = future.result()
                 except Exception as exc:  # belt and braces; _prepare_job catches
+                    # The traceback here is the ONLY evidence available: this
+                    # path is reached when something escaped `_prepare_job`
+                    # entirely, so by definition nothing inside it recorded a
+                    # frame. `format_exc()` is called while handling the
+                    # exception, so it formats this one and not some earlier
+                    # one on the pool thread.
                     prepared_by_position[position] = {
                         "stage": "tailor",
-                        "error": f"{type(exc).__name__}: {exc}"}
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "traceback": traceback.format_exc()}
 
         # Writes happen HERE, serially, in ranked order -- never in the pool.
         for position, job in enumerate(batch):
@@ -812,6 +836,7 @@ def tailor_jobs(jobs: list[dict[str, Any]],
                     company=str(job.get("company") or ""),
                     status="FAILED_AT_write",
                     reason=f"{type(exc).__name__}: {exc}",
+                    detail=traceback.format_exc(),
                     cost_usd=float(prepared.get("cost_usd") or 0.0),
                     directory=directory,
                 )
@@ -859,5 +884,13 @@ def _write_run_workbook(jobs: list[dict[str, Any]], outcome_run: TailorRun,
         result = render_excel.write_workbook({scope_label: jobs}, out_path)
     except (OSError, ValueError) as exc:
         job_store._warn(f"could not write the run workbook ({exc})")
+        return None
+    if not result.get("ok"):
+        # `write_workbook` reports partial writes rather than raising. Returning
+        # a path for a scope that never reached the disk would have the run
+        # summary point the user at a file that is not there.
+        failed = ", ".join(sorted(result.get("failed") or {})) or "unknown"
+        job_store._warn(f"the run workbook is incomplete -- scope(s) not "
+                        f"written: {failed}")
         return None
     return Path(result.get("path") or out_path)

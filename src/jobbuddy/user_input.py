@@ -40,6 +40,8 @@ import json
 import os
 import re
 import shutil
+import tempfile
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,17 +60,38 @@ REQUIRED_FIELDS = ("full_name", "resume_path", "target_roles")
 
 _warned: set[str] = set()
 
+# One writer per file, per the repo rule. See save_current() for the two
+# distinct races this closes -- a shared temp name, and concurrent os.replace
+# onto the same destination, which on Windows fails outright.
+_save_lock = threading.Lock()
+
 
 def _warn(message: str) -> None:
+    """Warn to stderr once per process.
+
+    The catch is narrow on purpose. This is the module's whole reporting
+    channel, so a blanket `except Exception: pass` here does not degrade one
+    warning -- it silently disables every degraded-path message in the file,
+    including the ones that explain why a resume came back empty. Only a
+    detached, closed or unencodable stderr can realistically fail, and those
+    are OSError/ValueError; anything else is a bug that should surface.
+
+    `_warned.add` also moved AFTER the print. Marking first meant a message
+    that failed to print was recorded as already-warned, so the retry that
+    would have worked never printed either.
+    """
+    import sys
+
     if message in _warned:
         return
-    _warned.add(message)
     try:
-        import sys
-
         print(f"user_input: {message}", file=sys.stderr)
-    except Exception:
-        pass
+    except (OSError, ValueError):
+        # stderr is gone. Nothing to report it to, by definition -- but do not
+        # mark the message as warned, so a later call with a working stream
+        # still gets a chance to say it.
+        return
+    _warned.add(message)
 
 
 def _now_iso() -> str:
@@ -83,7 +106,33 @@ def read_resume_text(path: str | Path) -> tuple[str, str]:
     """Extract text from a resume. Returns (text, how).
 
     Never raises -- a failed read returns ("", reason) so the caller can show a
-    useful message instead of a stack trace in a notebook cell.
+    useful message instead of a stack trace in a notebook cell. That reason is
+    the ONLY thing the user ever sees about the failure, which is why its
+    precision is load-bearing rather than cosmetic.
+
+    **One try block per operation, and every reason names the exception type.**
+    This used to be two blanket catches, each spanning four operations, each
+    formatting only `{exc}`. Opening a shredded file, an encrypted file, and a
+    page-30 content stream that pypdf chokes on all arrived at the user as
+    "could not read PDF: <some message>" with no type and no operation -- so a
+    bug in extraction was indistinguishable from a corrupt document, and the
+    only two available fixes ("re-export the PDF" and "report the pypdf bug")
+    could not be told apart. The blocks below are split so the reason says
+    which step failed, and the page number, because a resume whose first
+    twenty-nine pages extract fine is not a corrupt file.
+
+    A failing page aborts the read rather than being skipped. Partial resume
+    text is worse than none: `derive_years_experience` and `derive_skills` would
+    both run on it and quietly under-report, and the user would see a plausible
+    profile rather than an error.
+
+    Each block ends with a last-resort catch. That is deliberate and is not the
+    old blanket: it names the operation AND `type(exc).__name__`, so an
+    unforeseen failure is still diagnosable. It exists because pypdf's
+    extraction walks attacker-shaped content streams and raises well outside its
+    own exception hierarchy (KeyError, struct.error, RecursionError have all
+    been seen), and the repo rule that this function cannot raise outranks the
+    rule that catches are narrow.
     """
     path = Path(path)
     suffix = path.suffix.lower()
@@ -100,41 +149,118 @@ def read_resume_text(path: str | Path) -> tuple[str, str]:
     if suffix == ".pdf":
         try:
             from pypdf import PdfReader
+            from pypdf import errors as pypdf_errors
         except ImportError:
             return "", "pypdf is not installed -- run: py -m pip install pypdf"
+
+        # 1. Open and read the page tree. A truncated header, an empty file, a
+        #    password-protected document and a broken xref all fail HERE, and
+        #    none of them is an extraction problem.
         try:
             reader = PdfReader(str(path))
-            pages = [(page.extract_text() or "") for page in reader.pages]
-            text = "\n".join(pages).strip()
-            if not text:
-                return "", ("no text layer in this PDF -- it is probably a scan. "
-                            "Export a text PDF from Word/Docs, or supply a .docx")
-            return text, f"pypdf ({len(reader.pages)} page(s))"
+            page_count = len(reader.pages)
+        except pypdf_errors.FileNotDecryptedError as exc:
+            return "", (f"could not open PDF: {type(exc).__name__}: {exc} -- "
+                        "it is password-protected; save an unprotected copy")
+        except pypdf_errors.DependencyError as exc:
+            return "", (f"could not open PDF: {type(exc).__name__}: {exc} -- "
+                        "it uses a cipher pypdf needs a helper for: "
+                        "py -m pip install cryptography")
+        except pypdf_errors.PyPdfError as exc:
+            # EmptyFileError, PdfReadError, PdfStreamError, ParseError.
+            return "", (f"could not open PDF: {type(exc).__name__}: {exc} -- "
+                        "the file itself is damaged, not just one page")
+        except (OSError, ValueError) as exc:
+            return "", f"could not open PDF: {type(exc).__name__}: {exc}"
         except Exception as exc:
-            return "", f"could not read PDF: {exc}"
+            return "", (f"could not open PDF: unexpected "
+                        f"{type(exc).__name__}: {exc}")
+
+        # 2. Extract, one page at a time. The page number is the whole point:
+        #    "page 30 of 31 raised KeyError" is a bug report, while "could not
+        #    read PDF" is a shrug.
+        pages: list[str] = []
+        for number, page in enumerate(reader.pages, start=1):
+            try:
+                pages.append(page.extract_text() or "")
+            except pypdf_errors.PyPdfError as exc:
+                return "", (f"could not extract text from page {number} of "
+                            f"{page_count}: {type(exc).__name__}: {exc}")
+            except Exception as exc:
+                # pypdf raises outside its own hierarchy on malformed content
+                # streams. Named, not swallowed.
+                return "", (f"could not extract text from page {number} of "
+                            f"{page_count}: unexpected "
+                            f"{type(exc).__name__}: {exc}")
+
+        # 3. Join and judge. Nothing here can fail on a list of str, so it is
+        #    outside the catches rather than hidden inside them.
+        text = "\n".join(pages).strip()
+        if not text:
+            return "", (f"no text layer in this PDF ({page_count} page(s) "
+                        "extracted, all empty) -- it is probably a scan. "
+                        "Export a text PDF from Word/Docs, or supply a .docx")
+        return text, f"pypdf ({page_count} page(s))"
 
     if suffix == ".docx":
         try:
             import docx  # python-docx
+            from docx.opc.exceptions import OpcError
         except ImportError:
             return "", "python-docx is not installed -- run: py -m pip install python-docx"
+
+        # Opening a .docx is a zip open plus an XML parse; reading paragraphs is
+        # a separate walk over the document body. A file that is not really a
+        # .docx (a renamed .doc, most often) fails at the first and needs a
+        # different answer from one whose body will not walk.
         try:
             document = docx.Document(str(path))
-            return "\n".join(p.text for p in document.paragraphs).strip(), "python-docx"
+        except OpcError as exc:
+            # PackageNotFoundError is the common one: not a zip, or not OOXML.
+            return "", (f"could not open DOCX: {type(exc).__name__}: {exc} -- "
+                        "this is probably not really a .docx (an old .doc "
+                        "renamed?); re-save it as .docx from Word")
+        except (OSError, ValueError, KeyError) as exc:
+            return "", f"could not open DOCX: {type(exc).__name__}: {exc}"
         except Exception as exc:
-            return "", f"could not read DOCX: {exc}"
+            return "", (f"could not open DOCX: unexpected "
+                        f"{type(exc).__name__}: {exc}")
 
+        try:
+            paragraphs = [p.text for p in document.paragraphs]
+        except Exception as exc:
+            return "", (f"could not read the paragraphs of this DOCX: "
+                        f"{type(exc).__name__}: {exc}")
+        return "\n".join(paragraphs).strip(), "python-docx"
+
+    # .txt / .md. `UnicodeDecodeError` is caught alongside OSError because it is
+    # not an OSError -- a CV saved as UTF-16 or Latin-1 raised straight out of
+    # this function, which is exactly the stack-trace-in-a-notebook-cell the
+    # contract above promises never happens.
     try:
         return path.read_text(encoding="utf-8-sig").strip(), "plain text"
+    except UnicodeDecodeError as exc:
+        return "", (f"could not decode this file as UTF-8 "
+                    f"({type(exc).__name__}: {exc}) -- re-save it as UTF-8")
     except OSError as exc:
-        return "", f"could not read file: {exc}"
+        return "", f"could not read file: {type(exc).__name__}: {exc}"
 
 
 def resume_fingerprint(path: str | Path) -> str:
-    """Content hash, so an unchanged resume is not stored twice."""
+    """Content hash, so an unchanged resume is not stored twice.
+
+    Returns "" if the file cannot be read, and says so. The empty string is not
+    inert: `archive_resume` treats a missing hash as "nothing to archive" and
+    returns None, so a permission error here silently costs the user their
+    resume archive and `log_submission` records `resume_archived_as: null` with
+    no explanation anywhere in the run. The archive-write failure warns; the
+    fingerprint failure that causes the same outcome used to be silent.
+    """
     try:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()[:16]
-    except OSError:
+    except OSError as exc:
+        _warn(f"could not fingerprint {path} ({exc}) - the resume will not be "
+              "archived for this submission")
         return ""
 
 
@@ -300,7 +426,14 @@ def derive_skills(text: str, vocabulary: dict[str, float] | None = None) -> list
     """
     try:
         from jobbuddy import skills_taxonomy
-    except ImportError:
+    except ImportError as exc:
+        # Say so. An empty list here is indistinguishable downstream from "this
+        # resume matched no skills", and `validate` turns that into the note
+        # "only 0 skills matched the taxonomy" -- blaming the user's resume for
+        # a missing module. `derive_seniority` already reports its equivalent
+        # import failure as "unavailable"; this one used to be silent.
+        _warn(f"skills_taxonomy unavailable ({exc}) - no skills could be "
+              "derived; this is a missing module, not an empty resume")
         return []
 
     lowered = " " + re.sub(r"[^a-z0-9+#]+", " ", text.lower()) + " "
@@ -633,19 +766,52 @@ def log_submission(profile: IntakeProfile, extra: dict[str, Any] | None = None) 
 
 
 def save_current(profile: IntakeProfile) -> bool:
-    """Write the active profile, atomically. This is what the pipeline reads."""
-    try:
-        INTAKE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = CURRENT_PROFILE.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps(profile.to_dict(include_resume_text=False), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        os.replace(tmp, CURRENT_PROFILE)
-        return True
-    except OSError as exc:
-        _warn(f"could not save current profile ({exc})")
-        return False
+    """Write the active profile, atomically. This is what the pipeline reads.
+
+    Two separate races had to be closed, and neither was visible single-threaded.
+
+    1. The temp file is per-call, not a fixed `current_profile.tmp`. os.replace
+       is atomic, but only for a writer that owns its source file: with one
+       shared temp name, writer B overwrites A's temp between A's write and A's
+       replace (publishing B's bytes under A's call, or a half-written mix),
+       and whichever replaces second hits FileNotFoundError because the first
+       already consumed the file.
+
+    2. Unique temp files alone are NOT enough on Windows. Concurrent
+       os.replace() calls onto the same destination fail with
+       `[WinError 5] Access is denied` -- the replace itself contends, not just
+       the source. This was measured, not assumed: the regression test failed
+       exactly this way with unique temps and no lock.
+
+    So the write is serialised outright, which is the repo's "one writer per
+    file" rule applied literally. The lock is per-process; that is the scope
+    the thread pool needs.
+    """
+    payload = json.dumps(profile.to_dict(include_resume_text=False),
+                         indent=2, ensure_ascii=False)
+    with _save_lock:
+        tmp_path = None
+        try:
+            INTAKE_DIR.mkdir(parents=True, exist_ok=True)
+            # Same directory, so os.replace stays on one filesystem.
+            handle, tmp_name = tempfile.mkstemp(dir=str(INTAKE_DIR),
+                                                prefix="current_profile.",
+                                                suffix=".tmp")
+            tmp_path = Path(tmp_name)
+            with os.fdopen(handle, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+            os.replace(tmp_path, CURRENT_PROFILE)
+            return True
+        except OSError as exc:
+            _warn(f"could not save current profile ({exc})")
+            if tmp_path is not None:
+                # Do not leave the intake directory filling with orphaned temps.
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError as cleanup_exc:
+                    _warn(f"could not remove temp file {tmp_path} "
+                          f"({cleanup_exc})")
+            return False
 
 
 def load_current() -> dict[str, Any] | None:

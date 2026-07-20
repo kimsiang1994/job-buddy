@@ -41,7 +41,10 @@ def load_dotenv(path=ENV_PATH):
     """
     if not os.path.exists(path):
         return
-    with open(path, "r", encoding="utf-8") as fh:
+    # utf-8-sig, not utf-8: a .env written by Notepad or `Set-Content` carries a
+    # BOM, and reading it as plain utf-8 makes the first key '﻿DEEPSEEK_API_KEY'
+    # -- so the API key is silently absent and every call fails unauthenticated.
+    with open(path, "r", encoding="utf-8-sig") as fh:
         for raw in fh:
             line = raw.strip()
             if not line or line.startswith("#") or "=" not in line:

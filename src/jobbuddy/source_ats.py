@@ -206,10 +206,18 @@ def _smartrecruiters(token: str, ttl: float) -> list[dict[str, Any]]:
 
 
 def _workday(token: str, ttl: float) -> list[dict[str, Any]]:
-    try:
-        tenant, datacentre, site = token.split("|")
-    except ValueError:
+    # Workday packs tenant|datacentre|site into one token (see detect_ats). A
+    # token that does not unpack is a broken registry entry, not an empty
+    # board: returning [] silently meant that company contributed nothing, run
+    # after run, and the counters showed a board fetched with zero postings --
+    # indistinguishable from a company that simply is not hiring.
+    parts = token.split("|")
+    if len(parts) != 3 or not all(parts):
+        net._warn(f"ats: workday token {token!r} is malformed -- expected "
+                  f"'tenant|datacentre|site'; fix or delete this entry in "
+                  f"{BOARDS_PATH.name}")
         return []
+    tenant, datacentre, site = parts
     url = (f"https://{tenant}.{datacentre}.myworkdayjobs.com"
            f"/wday/cxs/{tenant}/{site}/jobs")
     # Workday needs a POST body, and returns HTML if Accept is not set.

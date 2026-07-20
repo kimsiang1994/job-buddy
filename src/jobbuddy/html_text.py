@@ -74,14 +74,34 @@ def flatten_html(html: str, preserve_blocks: bool = True) -> str:
 
     A malformed description must degrade to whatever text could be recovered,
     not take down the record it belongs to.
+
+    The regex fallback is a real degradation, not an equivalent path: it loses
+    the block structure that tells `skill_extract` a heading from body text, so
+    every skill under 'Nice to have' starts reading as mandatory. Taking it
+    without a word meant a job could be scored on a silently worse extraction
+    and nothing distinguished it from the rest of the run.
     """
+    # Coerced once, up front. A source handing this a non-string (an int id, a
+    # dict from a malformed API response) used to reach `parser.feed()`, raise
+    # TypeError, and then raise a SECOND TypeError inside the handler itself
+    # where `len(html)` was interpolated into the warning -- so the function
+    # documented as never raising raised, out of its own recovery path.
+    if not isinstance(html, str):
+        html = "" if html is None else str(html)
+
     parser = TextExtractor(preserve_blocks=preserve_blocks)
     try:
-        parser.feed(html or "")
-    except Exception:
-        # HTMLParser is tolerant, but a pathological document should not be
-        # able to lose a whole job.
-        return re.sub(r"<[^>]+>", " ", html or "").strip()
+        parser.feed(html)
+    except Exception as exc:
+        # Deliberately broad: HTMLParser is tolerant, so anything reaching here
+        # is a document shape stdlib did not anticipate, and the point is that
+        # a pathological description cannot lose a whole job.
+        from jobbuddy import net
+
+        net._warn(f"html: {type(exc).__name__} parsing a {len(html)}-char "
+                  f"document ({exc}); falling back to regex tag-stripping, "
+                  f"which loses block structure and section awareness")
+        return re.sub(r"<[^>]+>", " ", html).strip()
     return parser.text()
 
 

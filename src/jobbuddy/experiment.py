@@ -269,7 +269,7 @@ def main() -> int:
         print("no verified profile -- run import_resume then verify_profile.promote",
               file=sys.stderr)
         return 2
-    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    profile = json.loads(profile_path.read_text(encoding="utf-8-sig"))
 
     config = scoring.load_config()
     scopes = config.get("scopes") or []

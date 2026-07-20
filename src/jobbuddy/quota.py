@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from jobbuddy import net
+
 REPO_DIR = Path(__file__).resolve().parents[2]
 USAGE_PATH = REPO_DIR / "state" / "api_usage.json"
 
@@ -40,25 +42,49 @@ def _month() -> str:
 
 
 def _load() -> dict[str, Any]:
+    """This month's counts. Never raises, but never resets silently.
+
+    A fresh dict is the right fallback -- refusing to run because a counter
+    file is malformed would be worse than the overspend it guards against --
+    but it is NOT a harmless one. Returning `{"counts": {}}` says "you have
+    spent nothing this month", which re-arms the whole monthly allowance on
+    every caller, and the next `spend()` writes that fiction back to disk. The
+    failure mode is a bill, so the fallback has to announce itself.
+    """
     if not USAGE_PATH.is_file():
         return {"month": _month(), "counts": {}}
+    fresh = {"month": _month(), "counts": {}}
     try:
         data = json.loads(USAGE_PATH.read_text(encoding="utf-8-sig"))
-        if data.get("month") != _month():
-            return {"month": _month(), "counts": {}}   # new month, fresh budget
-        return data
-    except (OSError, ValueError):
-        return {"month": _month(), "counts": {}}
+    except (OSError, ValueError) as exc:
+        net._warn(f"quota: could not read {USAGE_PATH.name} ({exc}); treating "
+                  f"this month's spend as ZERO -- paid sources are unguarded "
+                  f"until the file is repaired")
+        return fresh
+    if not isinstance(data, dict) or not isinstance(data.get("counts"), dict):
+        net._warn(f"quota: {USAGE_PATH.name} is not a usage record; treating "
+                  f"this month's spend as ZERO -- paid sources are unguarded")
+        return fresh
+    if data.get("month") != _month():
+        return fresh                                   # new month, fresh budget
+    return data
 
 
 def _save(data: dict[str, Any]) -> None:
+    """Persist the counts. A failure here is an overspend, so it must be loud.
+
+    `spend()` ignores this -- there is nothing useful it could do -- so silence
+    meant every request this run counted against a budget that was never
+    written down, and the next process started the month over.
+    """
     try:
         USAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp = USAGE_PATH.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
         os.replace(tmp, USAGE_PATH)
-    except OSError:
-        pass
+    except OSError as exc:
+        net._warn(f"quota: could not write {USAGE_PATH.name} ({exc}); spend is "
+                  f"NOT being recorded, so the monthly cap is not enforced")
 
 
 def limit_for(provider: str) -> int:

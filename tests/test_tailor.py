@@ -237,3 +237,107 @@ class FailureIsReportedNotRaised(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ANoteIsNotAlsoABullet(unittest.TestCase):
+    """The extractor makes a line under a role heading both a `note` and a
+    fact -- from the resume text it is genuinely both. The renderer then
+    printed "TikTok Inspire Award recipient" twice: once in italics under the
+    role, and again as the first bullet."""
+
+    AWARD = "Inspire Award recipient"
+
+    def _profile(self):
+        award = dict(FACT_B, fact_id="northwind.award",
+                     note=self.AWARD, phrasings=[self.AWARD],
+                     numbers=[], entities=[], skills=[])
+        work = dict(FACT_B, note=self.AWARD)
+        return {**PROFILE, "facts": [work, award]}
+
+    def test_a_bullet_that_is_only_the_note_is_dropped(self):
+        chat = stub([{"fact_id": "northwind.award", "rank": 1},
+                     {"fact_id": "northwind.retrieval", "rank": 2}])
+        result = tailor.tailor(self._profile(), JOB_ML, chat=chat)
+        texts = [b["text"] for b in result["bullets"]]
+        self.assertNotIn(self.AWARD, texts)
+
+    def test_the_real_bullet_for_that_role_survives(self):
+        """The fix must remove the duplicate, not the role."""
+        chat = stub([{"fact_id": "northwind.award", "rank": 1},
+                     {"fact_id": "northwind.retrieval", "rank": 2}])
+        result = tailor.tailor(self._profile(), JOB_ML, chat=chat)
+        self.assertIn("northwind.retrieval",
+                      [b["fact_id"] for b in result["bullets"]])
+
+    def test_a_bullet_merely_containing_the_note_text_is_kept(self):
+        """Only an exact match is a duplicate. A bullet that mentions the award
+        while saying something else is real content."""
+        profile = self._profile()
+        longer = dict(FACT_B, fact_id="northwind.longer", note=self.AWARD,
+                      phrasings=[f"{self.AWARD} for shipping the retrieval "
+                                 f"pipeline in PyTorch"])
+        profile["facts"] = profile["facts"] + [longer]
+        chat = stub([{"fact_id": "northwind.longer", "rank": 1}])
+        result = tailor.tailor(profile, JOB_ML, chat=chat)
+        self.assertTrue(any("shipping" in b["text"] for b in result["bullets"]))
+
+
+class SkillsAreReorderedNeverRewritten(unittest.TestCase):
+    """The honest half of "ATS optimisation": lossless reordering, so every
+    term on the page is still one the candidate put there.
+
+    Keyword-density maximisation is deliberately absent -- it optimises against
+    a threat that traces to a vendor defunct since 2013, while a human does
+    read the page and a stuffed list reads like a stuffed list.
+    """
+
+    GROUPS = [{"label": "AI / ML",
+               "items": ["Bayesian modelling", "computer vision", "RAG pipelines"]},
+              {"label": "Stack", "items": ["Java", "Selenium", "PySpark"]}]
+
+    JOB = {"title": "ML Engineer", "jd_text": "You will build RAG pipelines in PySpark."}
+
+    def test_relevant_items_rise_to_the_front(self):
+        out = tailor.order_skills_for_job(self.GROUPS, self.JOB, [])
+        self.assertEqual(out[0]["items"][0], "RAG pipelines")
+        self.assertEqual(out[1]["items"][0], "PySpark")
+
+    def test_nothing_is_added_removed_or_renamed(self):
+        out = tailor.order_skills_for_job(self.GROUPS, self.JOB, [])
+        for before, after in zip(self.GROUPS, out):
+            with self.subTest(label=before["label"]):
+                self.assertEqual(sorted(before["items"]), sorted(after["items"]))
+                self.assertEqual(before["label"], after["label"])
+
+    def test_irrelevant_items_keep_their_relative_order(self):
+        """A stable sort, so the list never looks shuffled."""
+        out = tailor.order_skills_for_job(self.GROUPS, self.JOB, [])
+        self.assertEqual(out[0]["items"][1:], ["Bayesian modelling", "computer vision"])
+
+    def test_a_job_with_no_text_changes_nothing(self):
+        self.assertEqual(tailor.order_skills_for_job(self.GROUPS, {}, []),
+                         list(self.GROUPS))
+
+
+class CoverageReportsTheGapRatherThanClosingIt(unittest.TestCase):
+    def test_a_matched_requirement_is_reported_present(self):
+        report = tailor.keyword_coverage(
+            [{"text": "Automated 4 ETL processes in PySpark"}], [], {},
+            ["PySpark", "Kubernetes"])
+        self.assertIn("PySpark", report["matched"])
+
+    def test_an_unmatched_requirement_is_named_not_hidden(self):
+        report = tailor.keyword_coverage(
+            [{"text": "Automated 4 ETL processes in PySpark"}], [], {},
+            ["PySpark", "Kubernetes"])
+        self.assertIn("Kubernetes", report["unmatched"])
+        self.assertEqual(report["share"], 0.5)
+
+    def test_skills_count_toward_coverage(self):
+        report = tailor.keyword_coverage(
+            [], [{"label": "Stack", "items": ["Kubernetes"]}], {}, ["Kubernetes"])
+        self.assertEqual(report["unmatched"], [])
+
+    def test_no_requirements_reports_no_share_rather_than_a_perfect_one(self):
+        """A share of 1.0 from zero requirements is a fabricated pass."""
+        self.assertIsNone(tailor.keyword_coverage([], [], {}, [])["share"])

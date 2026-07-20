@@ -134,7 +134,8 @@ def fetch_jobs(
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Search recent Who-is-hiring threads. Same contract as the other sources."""
     counters = {"threads": 0, "comments": 0, "unparseable": 0,
-                "dropped_overseas": 0, "dropped_offtopic": 0, "kept": 0}
+                "dropped_overseas": 0, "dropped_offtopic": 0, "invalid": 0,
+                "kept": 0}
     terms = [t for t in re.split(r"\s+", query.lower()) if len(t) > 2]
     jobs: list[dict[str, Any]] = []
 
@@ -153,7 +154,16 @@ def fetch_jobs(
             if terms and not any(t in haystack for t in terms):
                 counters["dropped_offtopic"] += 1
                 continue
-            if job_schema.validate_job(job):
+            problems = job_schema.validate_job(job)
+            if problems:
+                # `parse_posting` already rejects a comment with no company or
+                # no title, so anything failing HERE is this mapper losing a
+                # field -- the shape that breaks every record at once. Dropping
+                # those with no counter and no message made "the mapper is
+                # broken" look identical to "no SG roles in this thread". MCF
+                # and Workable both name the problems; this did not.
+                counters["invalid"] += 1
+                net._warn(f"hn: {job['job_key']} rejected -- {'; '.join(problems)}")
                 continue
             job["scope"] = query
             jobs.append(job)

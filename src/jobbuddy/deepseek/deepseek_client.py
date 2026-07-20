@@ -79,8 +79,13 @@ _log_lock = threading.Lock()
 
 
 def _log_usage(record):
+    """Append one JSONL line. Logging must never break a call.
+
+    The docstring used to sit inside the `with` block, where it was a no-op
+    string expression rather than a docstring -- `help(_log_usage)` and every
+    doc tool showed None.
+    """
     with _log_lock:
-        """Append one JSONL line. Logging must never break a call."""
         try:
             with open(USAGE_LOG, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")

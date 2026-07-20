@@ -26,6 +26,7 @@ by prompting:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable
 
 from jobbuddy import fact_guard, strategies
@@ -212,6 +213,124 @@ def _restore_missing_roles(bullets: list[dict[str, Any]],
     return bullets + restored
 
 
+def _jd_terms(job: dict[str, Any], requirements: list[str]) -> set[str]:
+    """Lowercased words the job itself uses. The only vocabulary we match on."""
+    text = " ".join([
+        str(job.get("title") or ""),
+        " ".join(str(r) for r in requirements or []),
+        str(job.get("jd_text") or "")[:6000],
+    ]).lower()
+    return {w for w in (_token(x) for x in re.split(r"[^a-z0-9+#.]+", text))
+            if len(w) > 2}
+
+
+def order_skills_for_job(skill_groups: list[dict[str, Any]],
+                         job: dict[str, Any],
+                         requirements: list[str]) -> list[dict[str, Any]]:
+    """Reorder each skill group so job-relevant entries come first.
+
+    This is the honest half of "ATS optimisation". It is LOSSLESS -- nothing is
+    added, removed or renamed, so every term still on the page is one the
+    candidate put there. What changes is which ones a reader meets first, and
+    a screener reads the front of a list.
+
+    What this deliberately does NOT do is add keywords from the job
+    description. Keyword-density maximisation optimises against a threat that
+    turns out to be folklore: the "75% of resumes are auto-rejected by ATS"
+    figure traces to a vendor that shut down in 2013 having published no study,
+    and Greenhouse's own documentation confirms a resume that fails to parse
+    still creates a candidate record. Real automated rejection comes from
+    knockout questions on the application form, which no wording on the resume
+    can influence. Meanwhile a human does read the page, and a stuffed skills
+    list reads exactly like a stuffed skills list.
+    """
+    terms = _jd_terms(job, requirements)
+    if not terms:
+        return list(skill_groups or [])
+
+    out: list[dict[str, Any]] = []
+    for group in skill_groups or []:
+        items = list(group.get("items") or [])
+        # Stable sort: relevant items rise, everything keeps its relative order
+        # otherwise, so the list never looks shuffled.
+        ordered = sorted(
+            items,
+            key=lambda item: 0 if _mentions(item, terms) else 1)
+        out.append({**group, "items": ordered})
+    return out
+
+
+def _token(word: str) -> str:
+    """One comparable token.
+
+    `.` is kept INSIDE a word so "node.js" and "asp.net" survive, which means a
+    sentence-ending period welds onto the last word: a JD reading "...in
+    PySpark." yielded the term `pyspark.`, which matched nothing. Every skill
+    in the list silently failed to match and the reordering became a no-op that
+    looked like it was working.
+    """
+    return word.strip(".").strip()
+
+
+def _mentions(item: Any, terms: set[str]) -> bool:
+    words = {_token(w) for w in re.split(r"[^a-z0-9+#.]+", str(item).lower())}
+    return bool({w for w in words if w} & terms)
+
+
+def keyword_coverage(bullets: list[dict[str, Any]],
+                     skill_groups: list[dict[str, Any]],
+                     job: dict[str, Any],
+                     requirements: list[str]) -> dict[str, Any]:
+    """Which of the job's stated requirements the page actually answers.
+
+    Honest by construction: it reports what IS on the page against what the job
+    asked for, and names the gap rather than closing it. A requirement the
+    candidate cannot meet is useful information -- it is the difference between
+    "cut for space" and "genuinely lacking", and only the first is fixable
+    today.
+    """
+    on_page = " ".join(
+        [str(b.get("text") or "") for b in bullets]
+        + [str(i) for g in (skill_groups or []) for i in (g.get("items") or [])]
+    ).lower()
+    present, missing = [], []
+    for requirement in requirements or []:
+        words = {w for w in re.split(r"[^a-z0-9+#.]+", str(requirement).lower())
+                 if len(w) > 2}
+        if words and any(w in on_page for w in words):
+            present.append(str(requirement))
+        else:
+            missing.append(str(requirement))
+    total = len(present) + len(missing)
+    return {
+        "matched": present,
+        "unmatched": missing,
+        "share": round(len(present) / total, 2) if total else None,
+    }
+
+
+def _drop_note_duplicates(bullets: list[dict[str, Any]],
+                          facts_by_id: dict[str, dict[str, Any]]
+                          ) -> list[dict[str, Any]]:
+    """Remove bullets whose text is already the role's note line.
+
+    The extractor treats a line under a role heading as BOTH a `note` and a
+    fact, because from the resume text it is genuinely both -- "TikTok Inspire
+    Award recipient" sits where a note sits and reads like an achievement. The
+    renderer then printed it twice: once in italics under the role, and again
+    as the first bullet.
+
+    Dropped here rather than in the renderer so every output -- PDF, DOCX,
+    report -- gets the same list, instead of each having to remember.
+    """
+    notes = {str(f.get("note")).strip().lower()
+             for f in facts_by_id.values() if f.get("note")}
+    if not notes:
+        return bullets
+    return [b for b in bullets
+            if str(b.get("text") or "").strip().lower() not in notes]
+
+
 def tailor(profile: dict[str, Any], job: dict[str, Any],
            requirements: list[str] | None = None,
            chat: Callable[..., dict[str, Any]] | None = None,
@@ -281,15 +400,23 @@ def tailor(profile: dict[str, Any], job: dict[str, Any],
         })
 
     bullets = _restore_missing_roles(bullets, facts_by_id)
+    bullets = _drop_note_duplicates(bullets, facts_by_id)
 
     active, strategy_problems = strategies.resolve(strategy_names)
     # After the guard, never before. A transform running first could introduce
     # text that then passed validation as though a human had approved it.
     bullets = strategies.apply_post(bullets, active)
 
+    skill_groups = order_skills_for_job(
+        profile.get("skill_groups") or [], job, requirements or [])
+
     return {
         "ok": True,
         "strategies": [s.name for s in active],
+        # Reordered, never rewritten -- see order_skills_for_job.
+        "skill_groups": skill_groups,
+        "keyword_coverage": keyword_coverage(
+            bullets, skill_groups, job, requirements or []),
         "strategy_problems": strategy_problems,
         # Surfaced rather than swallowed: if this is ever False the two modules
         # have drifted apart and every citation in the run is suspect.

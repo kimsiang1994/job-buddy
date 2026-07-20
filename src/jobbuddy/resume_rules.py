@@ -770,7 +770,21 @@ def check(model: Any,
     `contact`, `text`/`html` and `spans`. Missing keys are skipped rather than
     assumed -- a rule that fires because a field is absent teaches the caller
     to ignore this module.
+
+    A model this module cannot read is a different case entirely, and it used
+    to return a CLEAN report. `pipeline` blocks a render on `report.errors`, so
+    a clean report on unreadable input is an affirmative "no personal data
+    found" from a check that inspected nothing -- and the render proceeds. Not
+    crashing was the right instinct; reporting success was not. It now fails
+    closed and loudly, which blocks the render exactly as a real leak would.
     """
+    if not isinstance(model, dict):
+        return Report([Violation(
+            "input.unreadable", "error",
+            f"resume model is a {type(model).__name__}, not an object; no rule "
+            "could be evaluated, so nothing here says the document is safe",
+            "document")])
+
     bullets = _bullets(model)
     text = document_text(model)
 

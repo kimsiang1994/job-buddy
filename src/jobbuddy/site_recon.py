@@ -257,6 +257,7 @@ def inspect_page(url: str, timeout: int = 40) -> dict[str, Any]:
         return out
 
     captured: list[dict[str, Any]] = []
+    dropped: list[str] = []
 
     try:
         with sync_playwright() as pw:
@@ -266,6 +267,11 @@ def inspect_page(url: str, timeout: int = 40) -> dict[str, Any]:
                                               timezone_id="Asia/Singapore")
                 page = context.new_page()
 
+                # Capturing XHR is the whole reason this function drives a
+                # browser. Swallowing a failure here silently produced the one
+                # answer you must never trust: "this site exposes no JSON API",
+                # reported with the same confidence whether none was called or
+                # the listener broke on every response.
                 def on_response(response):
                     try:
                         ctype = (response.headers or {}).get("content-type", "")
@@ -279,8 +285,13 @@ def inspect_page(url: str, timeout: int = 40) -> dict[str, Any]:
                             "status": response.status,
                             "post_data": (response.request.post_data or "")[:400],
                         })
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # Broad on purpose: Playwright raises its own Error type
+                        # for a response whose body was discarded before this
+                        # ran, and importing it here would couple recon to a
+                        # module it only optionally depends on. Recorded, not
+                        # swallowed.
+                        dropped.append(f"{type(exc).__name__}: {exc}"[:100])
 
                 page.on("response", on_response)
                 page.goto(url, timeout=timeout * 1000, wait_until="domcontentloaded")
@@ -338,6 +349,11 @@ def inspect_page(url: str, timeout: int = 40) -> dict[str, Any]:
 
     ranked = sorted(captured, key=score, reverse=True)
     out["api_calls"] = [c for c in ranked if score(c) > 3][:6]
+    if dropped:
+        # Surfaced so "no JSON API found" can be distinguished from "the
+        # listener could not read the responses that went past".
+        out["error"] = (f"{len(dropped)} response(s) could not be inspected "
+                        f"({dropped[0]}); the API-call list may be incomplete")
     return out
 
 

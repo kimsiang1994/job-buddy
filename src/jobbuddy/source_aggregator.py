@@ -272,8 +272,13 @@ def fetch_jobs(
         if singapore_only and job["is_overseas"]:
             counters["dropped_overseas"] += 1
             continue
-        if job_schema.validate_job(job):
+        problems = job_schema.validate_job(job)
+        if problems:
+            # The counter alone says how many were dropped but not why, which
+            # is the half of the answer you need when a vendor renames a field
+            # and every record starts failing on the same missing key.
             counters["invalid"] += 1
+            net._warn(f"{vendor}: {job['job_key']} rejected -- {'; '.join(problems)}")
             continue
         job["scope"] = query
         jobs.append(job)

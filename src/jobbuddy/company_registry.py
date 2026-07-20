@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from jobbuddy import job_schema, source_ats, source_workable
+from jobbuddy import job_schema, net, source_ats, source_workable
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = REPO_DIR / "config" / "companies.json"
@@ -63,15 +63,38 @@ def _now() -> str:
 
 
 def load() -> dict[str, dict[str, Any]]:
-    """company_norm -> record. Never raises."""
+    """company_norm -> record. Never raises, but never fails silently either.
+
+    An unreadable registry used to return `{}` without a word, and that is not
+    a harmless empty read: `observe()` and `run_discovery()` both call `save()`
+    on whatever `load()` handed back, so one bad parse silently OVERWROTE the
+    accumulated company -> board map with an empty file. Weeks of amortised
+    discovery gone, and nothing in the output said so.
+
+    The read still cannot raise -- a broken registry must not stop a search --
+    but the fallback now names itself, so the next `save()` clobbering the file
+    is at least preceded by an explanation of why.
+    """
     path = registry_path()
     if not path.is_file():
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-        return data.get("companies", {}) if isinstance(data, dict) else {}
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        net._warn(f"registry: could not read {path.name} ({exc}); "
+                  f"starting from an EMPTY registry -- the next write will "
+                  f"replace the file, so move it aside if you want it back")
         return {}
+    if not isinstance(data, dict):
+        net._warn(f"registry: {path.name} is a {type(data).__name__}, not an "
+                  f"object; starting from an empty registry")
+        return {}
+    companies = data.get("companies")
+    if not isinstance(companies, dict):
+        net._warn(f"registry: {path.name} has no 'companies' object; "
+                  f"starting from an empty registry")
+        return {}
+    return companies
 
 
 def save(companies: dict[str, dict[str, Any]]) -> bool:
@@ -95,7 +118,11 @@ def save(companies: dict[str, dict[str, Any]]) -> bool:
         tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)
         return True
-    except OSError:
+    except OSError as exc:
+        # Every caller ignores this return value, so a silent False meant a run
+        # could do all of its discovery and persist none of it.
+        net._warn(f"registry: could not write {path.name} ({exc}); "
+                  f"{len(companies)} company record(s) not persisted")
         return False
 
 

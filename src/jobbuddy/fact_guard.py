@@ -163,20 +163,63 @@ def _fact_entities(fact: dict[str, Any]) -> set[str]:
     return words
 
 
+def _year_month(value: Any) -> tuple[int, int] | None:
+    """(year, month) from a 'YYYY-MM' style date, or None if it is not one.
+
+    The range checks are the point, not decoration. `int()` accepts '99' as
+    happily as '09', so an `end` of '2019-99' used to parse as month
+    ninety-nine and add just over eight years to the span the guard measures a
+    claim against -- a bullet asserting "6 years" of something passed against a
+    fact covering ten months. Same fail-open as the '20I9' case in the
+    docstring below, reached through a date that is numeric rather than
+    obviously mistyped, which is why it survived the first fix.
+
+    A year is bounded too: '0000-01' and '99999-01' are not dates a resume
+    means, and both distort the span rather than being rejected by it.
+    """
+    try:
+        parts = str(value)[:7].split("-")[:2]
+        year, month = int(parts[0]), int(parts[1])
+    except (ValueError, TypeError, IndexError):
+        return None
+    if not (1900 <= year <= 2200) or not (1 <= month <= 12):
+        return None
+    return year, month
+
+
 def _years_between(start: str | None, end: str | None) -> float | None:
+    """Years spanned by a fact's dates, or None if they cannot be read.
+
+    None means "unknown", and every unparseable date must map to it, because
+    this number is the ceiling the duration check measures a claim against.
+
+    An earlier version fell back to `date.today()` when `end` failed to parse,
+    treating a malformed end date exactly like an absent one ("still employed").
+    That is the wrong direction for a guard: an `end` of "2019" mistyped as
+    "20I9" stopped meaning 2019 and started meaning now, inflating the supported
+    span by years, so a bullet claiming "8 years of Kubernetes" against a
+    two-year fact passed. The guard failed OPEN, silently, on the one input it
+    exists to catch -- and it did so only for `end`, since an unparseable
+    `start` already returned None.
+
+    Both ends now fail closed. The caller reports it: `check_bullet` turns a
+    None into an "unsupported duration" violation reading "fact supports
+    unknown", so the absence is stated rather than imputed.
+    """
     if not start:
         return None
-    try:
-        start_year, start_month = (int(p) for p in str(start)[:7].split("-")[:2])
-    except (ValueError, TypeError):
+    parsed_start = _year_month(start)
+    if parsed_start is None:
         return None
+    start_year, start_month = parsed_start
     if end:
-        try:
-            end_year, end_month = (int(p) for p in str(end)[:7].split("-")[:2])
-        except (ValueError, TypeError):
-            today = date.today()
-            end_year, end_month = today.year, today.month
+        parsed_end = _year_month(end)
+        if parsed_end is None:
+            # Unknown, not "today". See the docstring.
+            return None
+        end_year, end_month = parsed_end
     else:
+        # Absent end genuinely does mean "current role".
         today = date.today()
         end_year, end_month = today.year, today.month
     return (end_year - start_year) + (end_month - start_month) / 12.0

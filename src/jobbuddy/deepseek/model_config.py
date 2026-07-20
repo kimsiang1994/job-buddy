@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+import threading
 from datetime import datetime, timezone
 
 # src/jobbuddy/deepseek/<file> -> four levels up is the repo root.
@@ -46,6 +47,8 @@ MODEL_ID_RE = re.compile(r"^deepseek-v(\d+)(?:\.(\d+))?-([a-z]+)$")
 
 _warned = set()
 _cache = {"loaded": False, "config": None}
+# Serialises the lazy load. See _load() for the race it closes.
+_cache_lock = threading.Lock()
 
 
 # --------------------------------------------------------------------------
@@ -160,30 +163,68 @@ def select_tier(models, tier):
 # --------------------------------------------------------------------------
 
 def _load():
+    """The parsed models.json, read once. Safe to call from several threads.
+
+    The lock and the ordering below are both load-bearing. The previous version
+    set `loaded = True` BEFORE the file read that populates `config`:
+
+        if _cache["loaded"]:
+            return _cache["config"]     # None, for a moment
+        _cache["loaded"] = True         # set too early
+        ... read the file ...
+        _cache["config"] = config
+
+    This is the same defect that was found and fixed in
+    `token_budget.load_profiles()`, and it fails the same way. A second thread
+    arriving inside that window saw `loaded` true and got `None` back, so it
+    silently took the hardcoded-fallback path in `resolve_verbose()` and got
+    `None` from `model_info()` -- which then became an empty `info` dict in
+    `token_budget.budget_for()` and a request built against FALLBACK_MAX_OUTPUT
+    instead of the model's real limits. Under a thread pool that presents as
+    the wrong model being called intermittently, with a "config unavailable"
+    warning that is untrue: the file was fine and readable.
+
+    `loaded` is now set last, and the whole thing is serialised, so a caller
+    either waits or gets the real config. Never a half-built cache.
+    """
     if _cache["loaded"]:
         return _cache["config"]
-    _cache["loaded"] = True
-    try:
-        # utf-8-sig, not utf-8: Notepad and PowerShell's -Encoding utf8 both write
-        # a BOM, which json.load rejects. This reads fine with or without one.
-        with open(CONFIG_PATH, "r", encoding="utf-8-sig") as fh:
-            config = json.load(fh)
-        if not isinstance(config, dict):
-            raise ValueError("top level is not a JSON object")
+
+    with _cache_lock:
+        # Re-check inside the lock: another thread may have finished while this
+        # one waited, and re-reading the file would be harmless but pointless.
+        if _cache["loaded"]:
+            return _cache["config"]
+        config = None
+        try:
+            # utf-8-sig, not utf-8: Notepad and PowerShell's -Encoding utf8 both
+            # write a BOM, which json.load rejects. This reads fine with or
+            # without one.
+            with open(CONFIG_PATH, "r", encoding="utf-8-sig") as fh:
+                config = json.load(fh)
+            if not isinstance(config, dict):
+                raise ValueError("top level is not a JSON object")
+        except FileNotFoundError:
+            config = None
+            _warn("models.json not found - using built-in defaults. "
+                  "Run: py update_models.py")
+        except (json.JSONDecodeError, ValueError, OSError) as err:
+            config = None
+            _warn(f"models.json unreadable ({err}) - using built-in defaults. "
+                  "Run: py update_models.py")
         _cache["config"] = config
-    except FileNotFoundError:
-        _warn("models.json not found - using built-in defaults. "
-              "Run: py update_models.py")
-    except (json.JSONDecodeError, ValueError, OSError) as err:
-        _warn(f"models.json unreadable ({err}) - using built-in defaults. "
-              "Run: py update_models.py")
-    return _cache["config"]
+        # Last, so no other thread can observe the flag without the config.
+        _cache["loaded"] = True
+        return _cache["config"]
 
 
 def reload():
     """Drop the cached config. Only needed by long-running processes."""
-    _cache["loaded"] = False
-    _cache["config"] = None
+    with _cache_lock:
+        # Clear `loaded` first: a reader that races this must fall through to a
+        # real re-read rather than see the flag still set over a cleared config.
+        _cache["loaded"] = False
+        _cache["config"] = None
 
 
 def _check_staleness(config):

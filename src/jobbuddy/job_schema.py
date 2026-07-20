@@ -17,6 +17,7 @@ them into one id would make that undetectable.
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import unicodedata
 from datetime import date, datetime, timezone
@@ -252,7 +253,12 @@ def to_monthly_sgd(amount: Any, period: Any) -> int | None:
         value = float(amount)
     except (TypeError, ValueError):
         return None
-    if value <= 0:
+    # `float("1e309")` is `inf`, and `float("nan")` is a number that compares
+    # false against everything -- both survive the conversion above and then
+    # blow up on `int(round(...))` at the bottom. A source quoting a nonsense
+    # figure must get the same "cannot be trusted" None as any other bad input,
+    # not an OverflowError out of a pure normaliser.
+    if not math.isfinite(value) or value <= 0:
         return None
     key = norm_text(period).lower()
     multiplier = _SALARY_PERIOD_TO_MONTHLY.get(key)
@@ -264,6 +270,16 @@ def to_monthly_sgd(amount: Any, period: Any) -> int | None:
     monthly = value * multiplier
     if monthly > MONTHLY_PLAUSIBILITY_CEILING_SGD:
         monthly = monthly / 12.0
+    if monthly > MONTHLY_PLAUSIBILITY_CEILING_SGD:
+        # Still impossible after reading it as annual. The figure is not a
+        # salary under any period this function knows, so there is no reading
+        # of it to return. Returning the number anyway was the original bug in
+        # miniature: it stays above the ceiling, so it still maxes the pay
+        # score and still takes the top of the ranking -- the exact outcome the
+        # ceiling exists to prevent, merely 12x less of it. None means "no
+        # usable salary", which is what the caller already handles for a
+        # posting that stated none.
+        return None
     return int(round(monthly))
 
 
@@ -275,6 +291,30 @@ def salary_was_adjusted(amount: Any, period: Any) -> bool:
         return False
     multiplier = _SALARY_PERIOD_TO_MONTHLY.get(norm_text(period).lower(), 1.0)
     return value * multiplier > MONTHLY_PLAUSIBILITY_CEILING_SGD
+
+
+def salary_period_was_guessed(amount: Any, period: Any) -> bool:
+    """True when the period was unrecognised and inferred from magnitude.
+
+    `to_monthly_sgd` guesses annual-vs-monthly from the size of the number when
+    it does not recognise the stated period. The guess is defensible -- a
+    Singapore monthly tech salary does not reach 100k -- but it was made
+    SILENTLY, and it feeds the pay component of the score. A reader comparing
+    two jobs could not tell a stated salary from an inferred one.
+
+    This module is pure and has no warn mechanism by design, so the guess is
+    surfaced the way its sibling `salary_was_adjusted` already is: as a
+    predicate the sources call to stamp provenance. Reporting beats guessing
+    quietly; removing the guess would be worse, because the alternative is a
+    number that is 12x wrong.
+    """
+    try:
+        value = float(amount)
+    except (TypeError, ValueError):
+        return False
+    if value <= 0:
+        return False
+    return norm_text(period).lower() not in _SALARY_PERIOD_TO_MONTHLY
 
 
 def parse_date(value: Any) -> str | None:

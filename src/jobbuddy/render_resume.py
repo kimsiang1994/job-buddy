@@ -52,6 +52,7 @@ the result always names which degradation was taken.
 from __future__ import annotations
 
 import re
+import threading
 import warnings
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,24 @@ SCALE_MAX = 1.0
 # real Typst compile, so this is the cost knob.
 FIT_STEPS = 7
 
+# Horizontal page margin, in inches, at SCALE_MIN and SCALE_MAX. Measured off
+# the source resume rather than picked: its body text starts at 36pt = 0.50in
+# and its wrapped lines end at 576pt, i.e. 0.50in the other side. The previous
+# values (0.45 + 0.45*scale, so 0.90in at full size) spent 1.8in of an 8.27in
+# page on white and drove the fitter into cutting bullets that would otherwise
+# have fitted. `MIN_TEXT_COLUMN_FRACTION` is the property this exists to hold,
+# and `tests/test_render_resume.py` asserts it against a rendered PDF rather
+# than against these numbers -- a test on the constant would pass while the
+# page still looked starved.
+MARGIN_MIN_IN = 0.42
+MARGIN_MAX_IN = 0.52
+
+# The text column must occupy at least this share of the page width. 0.85 sits
+# below the 0.874 the margins above produce at full scale, so an ordinary
+# typographic tweak does not trip it, and well above the 0.78 that prompted
+# this -- a page starved back toward the old margins fails.
+MIN_TEXT_COLUMN_FRACTION = 0.85
+
 # Taleo's documented upload limit. Rendering above it is a silent rejection.
 MAX_PDF_BYTES = 100 * 1024
 
@@ -83,6 +102,12 @@ PAGE_ONE_BULLETS = 3
 
 _capabilities: dict[str, bool] | None = None
 _warned: set[str] = set()
+# Guards the capability probe against a concurrent reset. See capabilities().
+_capabilities_lock = threading.Lock()
+# Guards the check-then-act in _warn_once. Separate from the probe lock because
+# it protects a different invariant; `reset_capability_cache` takes both, always
+# in that order, and nothing takes them the other way round.
+_warned_lock = threading.Lock()
 
 
 # --------------------------------------------------------------------------
@@ -125,15 +150,31 @@ def capabilities(refresh: bool = False) -> dict[str, bool]:
     Cached because the answer cannot change inside a run and because probing on
     every bullet would turn an import failure into a per-call cost. `refresh` is
     for tests, which need to re-probe after patching a loader.
+
+    The lock is defensive, and honestly labelled as such. The None-check and
+    the `dict(_capabilities)` read are two separate loads of the global, so a
+    `reset_capability_cache()` landing between them would make the read raise
+    `TypeError: 'NoneType' object is not iterable`. That window is about two
+    bytecodes wide: it was NOT reproducible, even with six reader threads, two
+    resetter threads and `sys.setswitchinterval(1e-6)` for three seconds. So
+    there is no regression test for it -- a test that cannot fail on the
+    unlocked version would prove nothing.
+
+    The lock stays because it is uncontended in the normal path and makes the
+    invariant true by construction rather than by timing. This is NOT the
+    `loaded`-before-the-work bug found in `model_config._load()` and
+    `token_budget._backend_load()`; the probe here builds the dict fully before
+    assigning it, so no caller can ever observe a half-built cache.
     """
     global _capabilities
-    if _capabilities is None or refresh:
-        _capabilities = {
-            "pdf": _load_typst() is not None,
-            "docx": _load_docx() is not None,
-            "page_count": _load_pypdf() is not None,
-        }
-    return dict(_capabilities)
+    with _capabilities_lock:
+        if _capabilities is None or refresh:
+            _capabilities = {
+                "pdf": _load_typst() is not None,
+                "docx": _load_docx() is not None,
+                "page_count": _load_pypdf() is not None,
+            }
+        return dict(_capabilities)
 
 
 def _warn_once(key: str, message: str) -> None:
@@ -141,18 +182,37 @@ def _warn_once(key: str, message: str) -> None:
 
     A degraded render happens once per job; warning every time would bury the
     line that says which degradation was taken under fifty identical copies.
+
+    The membership test and the insert are one critical section. `set.add` being
+    atomic does not close this: two threads can both pass the `key in _warned`
+    check before either adds, and both then warn. `render()` is called from
+    `pipeline._prepare_job` under a ThreadPoolExecutor, so with typst absent and
+    four workers the "typst is not installed" line could print four times --
+    exactly the burial this function exists to prevent.
+
+    `warnings.warn` is deliberately outside the lock: it walks the stack for
+    `stacklevel` and then runs whatever filter the caller installed, and holding
+    a lock across arbitrary caller code would serialise every degraded render
+    behind the first. The lock protects the decision, not the emission.
     """
-    if key in _warned:
-        return
-    _warned.add(key)
+    with _warned_lock:
+        if key in _warned:
+            return
+        _warned.add(key)
     warnings.warn(message, RuntimeWarning, stacklevel=3)
 
 
 def reset_capability_cache() -> None:
-    """Forget the probe and the warnings. For tests only."""
+    """Forget the probe and the warnings. For tests only.
+
+    Takes the same lock as `capabilities()`, so a reset can never land between
+    that function's None-check and its read.
+    """
     global _capabilities
-    _capabilities = None
-    _warned.clear()
+    with _capabilities_lock:
+        _capabilities = None
+        with _warned_lock:
+            _warned.clear()
 
 
 # --------------------------------------------------------------------------
@@ -304,6 +364,43 @@ def build_typst_source(model: dict[str, Any], scale: float = SCALE_MAX,
     each of those is a measured extractor failure rather than a taste. Every
     dimension derives from `scale`, so the fitter has exactly one variable to
     search and cannot produce a page whose margins disagree with its type size.
+
+    **The margin is measured off the source document, not chosen.** It was
+    `0.45 + 0.45 * scale`, which is 0.9in a side at full size: 1.8in of an
+    8.27in A4 page spent on white, leaving a 6.47in column -- 78% of the page.
+    The resume this is meant to match (`input/Resume_YeoKimSiang_20260606.pdf`,
+    US Letter) was measured with pypdf: every body line starts at exactly 36pt
+    = 0.5in, and wrapped lines run to 576pt, giving 0.5in a side and a 7.5in
+    column, 88% of its page.
+
+    That gap was not only ugly, it was destroying content. The fitter shrinks
+    before it cuts, so a starved column pushed the search down to the 9pt floor
+    and then began dropping the lowest-ranked bullets -- bullets that fit
+    comfortably at a sane margin. Rendering a page narrower than the source and
+    then deleting the user's evidence to fit it is the wrong trade in both
+    directions.
+
+    So the range is anchored on two measured points rather than on a formula
+    someone liked: 0.52in a side at full scale (the source's 0.5in, plus a
+    hair), narrowing to 0.42in at `SCALE_MIN`, where the page is already fighting
+    for room. It stays derived from `scale` alone, so the fitter still has one
+    variable. The y margin keeps its 0.85 factor -- a slightly tighter top and
+    bottom than sides, which is what the source does too.
+
+    **`leading_em` and `gap_em` were retuned the same way.** Measured in
+    baseline-to-baseline distance as a multiple of body size, the source runs
+    1.14-1.15 between body lines, ~1.3-1.37 between roles and up to 1.68 at a
+    section break. This module was rendering 1.34 between body lines: every
+    wrapped line of every bullet carried a fifth of a line of air that the
+    document being matched does not have, which over ~57 lines is most of an
+    inch. `0.38 + 0.12 * scale` reproduces 1.14-1.15, and `0.55 + 0.25 * scale`
+    brings the section breaks back from ~1.99 to ~1.89 without flattening the
+    banded headings, which are the most recognisable thing on the page.
+
+    The combined effect on the real 14-fact profile, measured end to end: the
+    fitter used to settle at scale 0.848 (9.33pt) and now reaches 0.953
+    (10.48pt) with the same content on one page -- a bigger, denser, wider page
+    with nothing cut.
     """
     scale = max(SCALE_MIN, min(SCALE_MAX, float(scale)))
     bullets = model["bullets"] if bullets is None else bullets
@@ -312,9 +409,15 @@ def build_typst_source(model: dict[str, Any], scale: float = SCALE_MAX,
     font_pt = round(BASE_PT * scale, 2)
     name_pt = round(font_pt * 1.55, 2)
     heading_pt = round(font_pt * 1.15, 2)
-    margin_in = round(0.45 + 0.45 * scale, 3)
-    leading_em = round(0.50 + 0.20 * scale, 3)
-    gap_em = round(0.55 + 0.35 * scale, 3)
+    # 0.42in at SCALE_MIN, 0.52in at SCALE_MAX. See the docstring: both ends are
+    # measured against the source PDF, not chosen.
+    margin_in = round(MARGIN_MIN_IN
+                      + (MARGIN_MAX_IN - MARGIN_MIN_IN)
+                      * (scale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN), 3)
+    # Also measured, not chosen -- see the docstring. Both were set so the
+    # rendered baseline-to-baseline distances match the source document's.
+    leading_em = round(0.38 + 0.12 * scale, 3)
+    gap_em = round(0.55 + 0.25 * scale, 3)
 
     rule_pt = round(0.5 * scale, 3)
 

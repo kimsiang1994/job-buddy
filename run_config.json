@@ -21,6 +21,37 @@
       "\\bnational jobs\\b"
     ],
     "exclude_agencies": false,
+    "knockouts": {
+      "_comment": "Gaps that no amount of preparation closes before you could apply, so the job is EXCLUDED with a reason (it appears in the run's exclusion summary) rather than ranked low. A gap you could close -- a framework, a cloud, a tool -- is not here; that is the `reach` score, which lowers the rank and still shows you the job. Every rule below fires ONLY on required phrasing: 'PhD required' excludes, while 'PhD preferred', 'PhD a plus' and 'PhD or equivalent experience' do not. Anything ambiguous keeps the job, deliberately -- a job wrongly hidden is one you never learn about, a job wrongly kept costs you thirty seconds of reading.",
+      "enabled": true,
+      "doctorate": true,
+      "_doctorate_comment": "Excludes postings that require a PhD/doctorate. You hold an MSc. Set false if you want to see PhD-required research roles and judge them yourself.",
+      "professional_licence": true,
+      "_professional_licence_comment": "Excludes roles needing a licence or registration you cannot self-study: bar admission, medical registration, registered professional engineer, CFA charter, CPA/CA. Certifications you could simply go and sit (AWS, CISSP, Azure) are NOT here -- those are closeable and belong in reach.",
+      "degree_field": true,
+      "_degree_field_comment": "Excludes a required degree in a field unrelated to yours. This is the knockout most likely to hide something good, so it is built timid: any 'or related field' / 'or equivalent' wording keeps the job, and so does any overlap at all with degree_fields_held. In practice it should only fire on genuinely other professions (a required degree in Chemistry, Law, Nursing). Set false if you would rather never risk it.",
+      "degree_fields_held": [
+        "information technology",
+        "information system",
+        "computer",
+        "computing",
+        "software",
+        "economic",
+        "business",
+        "data",
+        "analytic",
+        "statistic",
+        "mathematic",
+        "artificial intelligence",
+        "machine learning",
+        "engineering",
+        "science",
+        "technology"
+      ],
+      "_degree_fields_held_comment": "Substrings, matched against the field list a posting names. Covers your MSc (IT in Business, AI track) and BSc Economics, plus the adjacent fields an AI JD normally lists. Broad on purpose: a field listed here can never trigger a knockout, so adding to it only makes the filter safer. Removing entries makes it bite harder.",
+      "years_experience_multiple": 2.0,
+      "_years_experience_multiple_comment": "Excludes a role demanding more than this multiple of profile.years_experience -- 2.0 x 5 means anything insisting on more than 10 years. Reads the board's stated minimum and any 'N+ years' under required phrasing, and takes the SMALLEST such figure, so '5+ years in ML, 10+ years leadership preferred' is read as five. Raise to 2.5 to see more stretch roles; lower to 1.5 to see fewer; set null to switch this knockout off."
+    },
     "_salary_comment": "No hard floor. A floor DELETES jobs; scoring RANKS them, and a role that pays less but is otherwise a strong fit is worth seeing rather than silently dropping. comp_signal compares each range against your 8,000 reference, so upside rises to the top on its own."
   },
   "scopes": [
@@ -65,6 +96,11 @@
     "target_seniority": "senior",
     "years_experience": 5,
     "current_salary_sgd_monthly": 8000,
+    "credentials_held": [
+      "master's degree",
+      "bachelor's degree"
+    ],
+    "_credentials_held_comment": "Formal credentials you already have, used by the reach score. A posting that prefers one of these costs you nothing; one that prefers a credential NOT on this list (a doctorate, or a professional licence such as bar admission, medical registration, registered PE, CFA or CPA) costs the small deduction set by weights._reach_preferred_credential_penalty. Your MSc (IT in Business, AI track) and BSc Economics are both covered by the two entries here. Add a credential the day you earn it and the deduction stops.",
     "_skills_comment": "Only skills the resume actually evidences. Adding one you cannot defend in an interview corrupts every downstream score, and later would let the tailoring stage cite it. Tiers: expert = led or built it; working = used it in production; familiar = have touched it.",
     "skills": {
       "expert": [
@@ -127,14 +163,21 @@
     }
   },
   "weights": {
-    "_comment": "Components that are null for a job (e.g. company_signal before 30 days of history) are dropped and the remaining weights renormalise, rather than being imputed to 50.",
-    "skill_match": 30,
+    "_comment": "Components that are null for a job (e.g. company_signal before 30 days of history) are dropped and the remaining weights renormalise, rather than being imputed to 50. Keys beginning with _ are settings, not weights, and are excluded from the total.",
+    "_rebalance_comment": "`reach` was added at 15 and paid for by skill_match 30->21, competition 20->16, comp_signal 15->13. Nine of its fifteen points come from skill_match because the two read the same underlying matching and should not be counted twice: skill_match averages over everything a posting names, reach looks only at what it says it MUST have. The remaining six come from the two market components, which describe the vacancy rather than the candidate. 15 puts reach level with seniority_fit -- real weight -- but it costs a well-matched job nothing, because reach is flat at 100 for anything you comfortably cover and only bites on stretch roles. Total is still 100.",
+    "skill_match": 21,
+    "reach": 15,
     "seniority_fit": 15,
-    "comp_signal": 15,
-    "competition": 20,
+    "comp_signal": 13,
+    "competition": 16,
     "company_signal": 10,
     "application_friction": 5,
-    "freshness": 5
+    "freshness": 5,
+    "_reach_comfortable_coverage": 70,
+    "_reach_out_of_depth_coverage": 30,
+    "_reach_preferred_credential_penalty": 0.12,
+    "_reach_preferred_credential_comment": "What a credential the posting wants and you do not hold costs, as a fraction of the reach score. 0.12 means a 'PhD preferred' role scores 88 on reach instead of 100. It is deliberately small: those roles do hire strong MSc candidates, so this marks the job down rather than hiding it -- only knockouts hide anything. At weight 15 it moves the final score by roughly two points (1.8, rising to about 2.0 when another component is unmeasurable and the weights renormalise), so it can never push a job you fit below one you do not. Applied once no matter how many credentials are named. Raise toward 0.25 if you would rather not see credential-gated roles near the top; set 0 to switch the deduction off entirely. What counts as 'held' is profile.credentials_held.",
+    "_reach_threshold_comment": "Reach measures the share of a job's MANDATORY requirements your verified skills cover. At or above _reach_comfortable_coverage (70%) it scores 100 and penalises nothing -- a normal application. At or below _reach_out_of_depth_coverage (30%) it scores 0 -- a job mostly about things you have not done. Linear in between. Raise the 70 to be harsher on partial fits; raise the 30 to stop punishing long-shot roles so hard; narrow the gap between them to make reach behave more like a cliff, widen it to make it a gentle slope. Neither threshold ever hides a job -- only knockouts do that."
   },
   "budget": {
     "max_run_cost_usd": 1.0,

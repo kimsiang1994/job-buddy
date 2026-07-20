@@ -40,6 +40,8 @@ _backend = {"loaded": False, "encode": None, "name": "heuristic"}
 _profiles_cache = {"loaded": False, "data": None}
 # Serialises the lazy load. See load_profiles() for the race it closes.
 _profiles_lock = threading.Lock()
+# Same job for the tokenizer probe. See _backend_load().
+_backend_lock = threading.Lock()
 
 
 def _warn(message):
@@ -72,26 +74,48 @@ def _heuristic_tokens(text):
 
 
 def _backend_load():
+    """Probe the tokenizer backend once. Safe to call from several threads.
+
+    Same shape, same fix as `load_profiles()` below: `loaded` used to be set
+    BEFORE the import and `Tokenizer.from_file()` call that populate `encode`,
+    so a second thread arriving mid-probe saw `loaded` true and got the
+    still-empty backend -- silently counting with the char-ratio heuristic even
+    though the official tokenizer was present and working.
+
+    That does not crash, which is exactly why it is worth closing: it produces
+    quietly wrong token estimates on some calls and not others, and
+    `backend_name()` is written into every usage_log record, so it also
+    corrupts the calibration data that calibrate_budgets.py tunes against.
+    `loaded` is now set last and the probe is serialised.
+    """
     if _backend["loaded"]:
         return _backend
-    _backend["loaded"] = True
-    if not os.path.exists(TOKENIZER_JSON):
+
+    with _backend_lock:
+        if _backend["loaded"]:
+            return _backend
+        if os.path.exists(TOKENIZER_JSON):
+            try:
+                from tokenizers import Tokenizer  # optional dependency
+                tokenizer = Tokenizer.from_file(TOKENIZER_JSON)
+                _backend["encode"] = lambda text: len(tokenizer.encode(text).ids)
+                _backend["name"] = "official"
+            except ImportError as err:
+                # Report the real exception -- "not installed" is only one
+                # possible cause (a broken wheel or a shadowing local file look
+                # identical otherwise).
+                _warn(f"tokenizer/tokenizer.json found but `from tokenizers import "
+                      f"Tokenizer` failed ({err.__class__.__name__}: {err}) - falling "
+                      "back to the char-ratio heuristic. If the package is missing: "
+                      "pip install -r requirements.txt")
+            except Exception as err:              # noqa: BLE001 - never fatal
+                _warn(f"could not load the official tokenizer ({err}) - using heuristic")
+        else:
+            _warn(f"no tokenizer at {TOKENIZER_JSON} - using the char-ratio "
+                  "heuristic. To use the official tokenizer: py fetch_tokenizer.py")
+        # Last, so no other thread can observe the flag without the backend.
+        _backend["loaded"] = True
         return _backend
-    try:
-        from tokenizers import Tokenizer  # optional dependency
-        tokenizer = Tokenizer.from_file(TOKENIZER_JSON)
-        _backend["encode"] = lambda text: len(tokenizer.encode(text).ids)
-        _backend["name"] = "official"
-    except ImportError as err:
-        # Report the real exception -- "not installed" is only one possible cause
-        # (a broken wheel or a shadowing local file look identical otherwise).
-        _warn(f"tokenizer/tokenizer.json found but `from tokenizers import "
-              f"Tokenizer` failed ({err.__class__.__name__}: {err}) - falling "
-              "back to the char-ratio heuristic. If the package is missing: "
-              "pip install -r requirements.txt")
-    except Exception as err:                      # noqa: BLE001 - never fatal
-        _warn(f"could not load the official tokenizer ({err}) - using heuristic")
-    return _backend
 
 
 def backend_name():

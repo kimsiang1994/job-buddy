@@ -451,3 +451,45 @@ class TheReadPathCannotRaise(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class AnUnreadableModelFailsClosed(unittest.TestCase):
+    """`pipeline` blocks a render on `report.errors`. A clean report for input
+    the gate could not read is therefore an affirmative "no personal data
+    found" from a check that inspected nothing -- and the render proceeds.
+
+    Not crashing was the right instinct. Reporting success was not.
+    """
+
+    def test_a_non_dict_model_is_an_error_not_a_clean_pass(self):
+        for model in (None, "a resume", 42, ["bullet"]):
+            with self.subTest(model=type(model).__name__):
+                report = resume_rules.check(model)
+                self.assertFalse(
+                    report.ok,
+                    f"a {type(model).__name__} model reported safe to render")
+                self.assertTrue(any(v.rule == "input.unreadable"
+                                    for v in report.errors))
+
+    def test_the_reason_says_nothing_was_evaluated(self):
+        """So the message cannot be read as 'checked and found clean'."""
+        report = resume_rules.check(None)
+        detail = " ".join(v.detail for v in report.errors)
+        self.assertIn("no rule", detail)
+
+    def test_it_still_does_not_raise(self):
+        """The convention it must keep: a gate that crashes fails open on the
+        render it was meant to stop."""
+        try:
+            resume_rules.check(object())
+        except Exception as exc:  # noqa: BLE001 - the assertion is that this is unreachable
+            self.fail(f"gate raised instead of reporting: {exc!r}")
+
+    def test_a_readable_model_is_unaffected(self):
+        """Guards against the fix turning into a rule that always fires."""
+        report = resume_rules.check({
+            "name": "Alex Tan",
+            "contact": ["alex@example.com"],
+            "bullets": [{"text": "Automated 4 ETL processes in PySpark"}]})
+        self.assertFalse(any(v.rule == "input.unreadable"
+                             for v in report.violations))

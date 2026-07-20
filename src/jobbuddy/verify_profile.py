@@ -30,12 +30,30 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import unicodedata
 from pathlib import Path
 from typing import Any
 
 from jobbuddy import fact_guard
 from jobbuddy.import_resume import DRAFT_PATH, VERIFIED_PATH
+
+_warned: set[str] = set()
+
+
+def _warn(message: str) -> None:
+    """Warn to stderr once per process.
+
+    The read path here cannot raise -- that part is the repo convention and is
+    correct. What was missing is the other half of the rule: a fallback must
+    say which path it took and why. A corrupted verified profile used to return
+    {} in silence, which every caller reads as "no profile yet", so hand-done
+    verification work looked like it had simply never happened.
+    """
+    if message in _warned:
+        return
+    _warned.add(message)
+    print(f"verify_profile: {message}", file=sys.stderr)
 
 # Punctuation a PDF renders one way and a model reproduces another. Mapped
 # rather than stripped, so lengths stay comparable and quotes stay readable.
@@ -228,9 +246,19 @@ def load_verified(path: Path | None = None) -> dict[str, Any]:
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        # Still {}, still cannot raise -- but say so. An absent profile and a
+        # corrupted one produce the same return value and very different
+        # situations: the second means verification work exists and is not
+        # being loaded.
+        _warn(f"{path.name} is present but unreadable ({exc}) - treating as "
+              "no verified profile; your verification work is still in the file")
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        _warn(f"{path.name} parsed as {type(data).__name__}, not an object - "
+              "treating as no verified profile")
+        return {}
+    return data
 
 
 def load_draft(path: Path | None = None) -> dict[str, Any]:
@@ -238,7 +266,13 @@ def load_draft(path: Path | None = None) -> dict[str, Any]:
     if not path.is_file():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        # The read path cannot raise, per the repo convention.
+        # utf-8-sig, matching load_verified above: the draft is the file a human
+        # hand-edits while verifying facts, so it is the one most likely to come
+        # back from Notepad with a BOM.
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        # The read path cannot raise, per the repo convention -- but a silent
+        # fallback is the other half of the rule, so name it.
+        _warn(f"{path.name} is present but unreadable ({exc}) - treating as "
+              "no draft profile")
         return {}

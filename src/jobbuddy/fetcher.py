@@ -222,8 +222,28 @@ def _fetch_unblocker(url: str, timeout: int) -> PageResult:
             timeout=timeout, accept="application/json",
         )
         if result.ok:
-            data = result.json() or {}
-            return PageResult(True, url, data.get("browserHtml", ""),
+            # `result.json() or {}` then `.get("browserHtml", "")` used to
+            # report ok=True with an empty page whenever Zyte answered with
+            # something other than the expected object -- a quota-exceeded
+            # notice, a plan error, an HTML wall. The caller saw a successful
+            # fetch of a blank document and reported "no jobs found" for a host
+            # we were being BILLED to read. Absence of browserHtml is a
+            # failure, not an empty result.
+            data = result.json()
+            if not isinstance(data, dict):
+                return PageResult(False, url, status=result.status,
+                                  strategy=f"unblocker:{provider}",
+                                  error="zyte returned a non-object body; "
+                                        "check the API key and plan status",
+                                  cost_note="billed per request")
+            html = data.get("browserHtml")
+            if not html:
+                return PageResult(False, url, status=result.status,
+                                  strategy=f"unblocker:{provider}",
+                                  error=f"zyte response carried no browserHtml "
+                                        f"(keys: {sorted(data)[:6]})",
+                                  cost_note="billed per request")
+            return PageResult(True, url, html,
                               result.status, f"unblocker:{provider}",
                               cost_note="billed per request")
     else:  # brightdata

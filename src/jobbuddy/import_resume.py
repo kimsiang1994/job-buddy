@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from pathlib import Path
 from typing import Any, Callable
 
@@ -29,6 +30,19 @@ VERIFIED_PATH = REPO_DIR / "profile" / "master_profile.json"
 
 # The extractor is asked for these keys and the draft is rejected without them.
 REQUIRED_FACT_KEYS = ("fact_id", "source_span")
+
+# Every section the prompt asks for. `schema_keys=("facts",)` is the only key
+# the client validates -- it refuses a response with no `facts` at all -- so
+# these are checked here instead. Absent from this list is absent from the
+# resume, and the module docstring above records what that costs: an entire
+# degree missing from every generated document, with `ok: True` everywhere.
+EXPECTED_SECTIONS = ("skills_declared", "skill_groups", "education",
+                     "languages", "identity")
+
+# The ones whose absence is not survivable. A resume with no education section
+# is possible; a resume with no name on it is a bug, and a resume with no skill
+# groups prints an empty column where the strongest evidence should be.
+CRITICAL_SECTIONS = ("identity", "skill_groups")
 
 SYSTEM_PROMPT = """You extract atomic, verifiable facts from a resume.
 
@@ -119,6 +133,22 @@ def extract_facts(resume_text: str,
 
     `chat` is injectable so the whole path is testable offline. It defaults to
     the real client, imported lazily so importing this module costs nothing.
+
+    **Reports which sections came back absent.** `schema_keys=("facts",)` asks
+    the client to validate exactly one key, so a response carrying facts and
+    nothing else passes validation. The six `or {}` / `or []` defaults below
+    then turned every other missing section into an empty container and returned
+    `ok: True` -- the caller could not distinguish "this resume has no
+    languages section" from "the model dropped the languages section", and
+    neither could the user. That is the same failure this module's own docstring
+    describes at the top: an entire degree silently absent from every generated
+    resume. It was fixed in the prompt and left live one layer down.
+
+    So `missing_sections` names what was not returned and `complete` is the flag
+    to branch on. `ok` stays True: the facts that DID come back are worth
+    keeping and the draft exists to be reviewed by a human before use. What
+    changes is that the absence is now written down instead of being papered
+    over by a default.
     """
     if chat is None:
         from jobbuddy.deepseek.deepseek_client import json_chat as chat
@@ -142,6 +172,21 @@ def extract_facts(resume_text: str,
 
     data = result.get("data") or {}
     facts = [f for f in (data.get("facts") or []) if isinstance(f, dict)]
+
+    # Absent AND present-but-empty both count. A model that returns
+    # `"education": []` has told us nothing more than one that omitted the key,
+    # and the printed resume is identically short either way.
+    missing = [key for key in EXPECTED_SECTIONS if not data.get(key)]
+    if missing:
+        critical = [key for key in missing if key in CRITICAL_SECTIONS]
+        detail = (f"extraction returned no {', '.join(missing)} -- if the "
+                  "resume has those sections, the model dropped them and the "
+                  "draft is incomplete")
+        if critical:
+            # Never silent. `identity` missing means a resume with no name on
+            # it; `skill_groups` missing means an empty skills column.
+            warnings.warn(detail, RuntimeWarning, stacklevel=2)
+
     return {
         "ok": True,
         "facts": facts,
@@ -150,6 +195,8 @@ def extract_facts(resume_text: str,
         "education": data.get("education") or [],
         "languages": data.get("languages") or [],
         "identity": data.get("identity") or {},
+        "missing_sections": missing,
+        "complete": not missing,
         "repaired": bool(result.get("repaired")),
     }
 
@@ -166,6 +213,14 @@ def build_draft(extracted: dict[str, Any], resume_text: str,
     Also de-duplicates fact_ids. A model asked for slugs will occasionally emit
     the same one twice, and a dict keyed by fact_id would silently drop the
     second -- losing a real accomplishment with no error anywhere.
+
+    `_missing_sections` is carried onto the draft rather than being dropped
+    here. The draft file is what the user opens to review, and an empty
+    `education: []` in it is ambiguous in exactly the way that cost a degree:
+    it reads as "the resume had none". Recorded next to the empty list, it reads
+    as "the extractor did not return one", which is a different instruction to
+    the person reviewing. Recomputed from `extracted` when the key is absent, so
+    a draft built from a hand-written dict is still described correctly.
     """
     facts: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -193,11 +248,17 @@ def build_draft(extracted: dict[str, Any], resume_text: str,
         fact["verification"] = None
         facts.append(fact)
 
+    missing = extracted.get("missing_sections")
+    if missing is None:
+        missing = [key for key in EXPECTED_SECTIONS if not extracted.get(key)]
+
     return {
         "_schema": "master_profile/1",
         "_status": "DRAFT -- not usable for tailoring until verified",
         "_source_pdf": str(source_path.name) if source_path else None,
         "_resume_text_chars": len(resume_text),
+        # Which sections the extractor never returned. Empty list = complete.
+        "_missing_sections": list(missing),
         "identity": extracted.get("identity") or {},
         "skills_declared": extracted.get("skills_declared") or {},
         # The printed sections. Absent from the first version of this schema,
@@ -232,7 +293,14 @@ def write_draft(draft: dict[str, Any], path: Path | None = None) -> Path:
 def import_resume(pdf_path: Path | None = None,
                   chat: Callable[..., dict[str, Any]] | None = None,
                   out_path: Path | None = None) -> dict[str, Any]:
-    """PDF -> draft profile. Returns a summary; writes nothing on failure."""
+    """PDF -> draft profile. Returns a summary; writes nothing on failure.
+
+    `complete` and `missing_sections` are part of the summary because `ok: True`
+    alone has already lied here once: a run that lost the education section
+    reported success, wrote a draft with `education: []`, and the missing degree
+    surfaced only when a human noticed it absent from a finished PDF. A caller
+    that prints `ok` and stops now has the second fact in front of it.
+    """
     pdf_path = pdf_path or find_resume()
     if pdf_path is None or not Path(pdf_path).is_file():
         return {"ok": False, "error": "no resume PDF found in input/"}
@@ -251,5 +319,7 @@ def import_resume(pdf_path: Path | None = None,
 
     draft = build_draft(extracted, resume_text, Path(pdf_path))
     written = write_draft(draft, out_path)
+    missing = list(draft["_missing_sections"])
     return {"ok": True, "path": written, "facts": len(draft["facts"]),
+            "missing_sections": missing, "complete": not missing,
             "resume_text": resume_text, "draft": draft}

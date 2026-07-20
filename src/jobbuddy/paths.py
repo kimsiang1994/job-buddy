@@ -118,13 +118,28 @@ def _fit(component: str, budget: int, original: str) -> str:
     The digest is of the ORIGINAL title rather than of the truncated prefix,
     which is the only version that distinguishes two titles sharing a prefix --
     the case that would otherwise have one job overwrite another.
+
+    Below `HASH_LEN + 2` there is no room for a readable prefix, and the budget
+    is deliberately overshot: the digest is returned WHOLE. The previous version
+    of this branch returned `_digest(original)[:max(1, budget)]` under a comment
+    claiming "uniqueness beats legibility" -- which the code then contradicted,
+    because one hex character is sixteen buckets and two jobs in the same run
+    collide at better than even odds once there are six of them. A collision
+    here silently overwrites a deliverable, which is the one outcome this whole
+    module exists to prevent, so the name is allowed to exceed the budget by a
+    few characters instead. That is the same trade the module docstring already
+    makes for the root: exceed MAX_PATH and let the OS complain, rather than
+    quietly lose a file.
+
+    `job_component` cannot currently reach this: `MIN_COMPONENT` (8) floors the
+    budget at exactly `HASH_LEN + 2`. It is kept, honest, rather than deleted,
+    because it is the branch that makes the invariant safe to change -- lowering
+    `MIN_COMPONENT` should shorten names, not start losing resumes.
     """
     if len(component) <= budget:
         return component
     if budget < HASH_LEN + 2:
-        # No room for a readable prefix. Uniqueness beats legibility here: a
-        # collision loses a deliverable, an ugly name only annoys.
-        return _digest(original)[:max(1, budget)]
+        return _digest(original)
     keep = budget - HASH_LEN - 1
     prefix = component[:keep].rstrip(" .-") or component[:keep]
     return f"{prefix}-{_digest(original)}"

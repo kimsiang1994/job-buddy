@@ -279,9 +279,17 @@ def silent_losses(tailored: dict[str, Any] | None,
     is visible in the document that results. A cut nobody is told about is how a
     resume loses its best bullet.
     """
-    guard = (tailored or {}).get("guard") or {}
+    # `guard_measured` distinguishes "the guard ran and rejected nothing" from
+    # "the guard never ran". Both used to render as a flat `0`, so a run where
+    # the tailoring stage failed before the guard printed "Bullets rejected by
+    # fact_guard: 0" -- an affirmative claim that nothing was lost, made on the
+    # basis of no measurement at all. That is the one thing this module's
+    # docstring forbids, in the section it calls the one worth the page.
+    guard_raw = (tailored or {}).get("guard")
+    guard = guard_raw or {}
     dropped = list((resume_render or {}).get("dropped") or [])
     return {
+        "guard_measured": isinstance(guard_raw, dict) and bool(guard_raw),
         "guard_rejected": int(guard.get("rejected") or 0),
         "guard_fell_back": int(guard.get("fell_back") or 0),
         "guard_by_kind": dict(guard.get("by_kind") or {}),
@@ -448,10 +456,17 @@ def build_typst_source(model: dict[str, Any]) -> str:
 
     lines += ["", "= What was dropped on your behalf", ""]
     losses = model["losses"]
+    # Print the counts only when the guard actually ran. Printing 0 for a guard
+    # that never executed tells the reader nothing was lost, which is a claim
+    # about evidence that does not exist.
+    if losses.get("guard_measured"):
+        guard_rejected = losses["guard_rejected"]
+        guard_fell_back = losses["guard_fell_back"]
+    else:
+        guard_rejected = guard_fell_back = NOT_MEASURED
     lines += [
-        _kv("Bullets rejected by fact_guard", losses["guard_rejected"]),
-        _kv("Bullets that fell back to approved phrasing",
-            losses["guard_fell_back"]),
+        _kv("Bullets rejected by fact_guard", guard_rejected),
+        _kv("Bullets that fell back to approved phrasing", guard_fell_back),
         _kv("Bullets cut to fit the page", len(losses["cut_to_fit"])),
         "",
     ]

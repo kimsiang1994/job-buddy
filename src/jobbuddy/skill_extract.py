@@ -32,7 +32,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
-from jobbuddy import skills_taxonomy
+from jobbuddy import net, skills_taxonomy
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 VOCAB_PATH = REPO_DIR / "config" / "skill_vocab.json"
@@ -125,23 +125,50 @@ def load_vocab(path: Path = VOCAB_PATH) -> dict[str, int]:
 
 
 def _load_full(path: Path = VOCAB_PATH) -> dict[str, Any]:
-    """The whole vocabulary record: terms, document frequency, corpus size."""
+    """The whole vocabulary record: terms, document frequency, corpus size.
+
+    Never raises, and never returns an empty vocabulary without saying so. A
+    silent fallback here is expensive twice over:
+
+      - an empty vocabulary makes `extract` find nothing, so `skill_match` --
+        the heaviest component at weight 30 -- returns None for every job from
+        every source that publishes no structured skills. The run still
+        completes and the scores still look plausible;
+      - `harvest()` writes back whatever this returned, so one unreadable read
+        REPLACES a 772-term vocabulary with an empty one on the very next fetch.
+
+    Both used to happen without a single line of output.
+    """
     empty: dict[str, Any] = {"terms": {}, "doc_freq": {}, "documents": 0}
     if not path.is_file():
         return empty
     try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-        if not isinstance(data, dict):
-            return empty
-        return {
-            "terms": {k: int(v) for k, v in (data.get("terms") or {}).items()
-                      if isinstance(v, (int, float))},
-            "doc_freq": {k: int(v) for k, v in (data.get("doc_freq") or {}).items()
-                         if isinstance(v, (int, float))},
-            "documents": int(data.get("documents") or 0),
-        }
-    except (OSError, ValueError, TypeError):
+        raw = path.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        net._warn(f"skills: could not read {path.name} ({exc}); "
+                  f"extracting against an EMPTY vocabulary this run")
         return empty
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        net._warn(f"skills: {path.name} is not valid JSON ({exc}); "
+                  f"extracting against an EMPTY vocabulary -- the next harvest "
+                  f"will overwrite the file, so move it aside to keep it")
+        return empty
+    if not isinstance(data, dict):
+        net._warn(f"skills: {path.name} is a {type(data).__name__}, not an "
+                  f"object; extracting against an empty vocabulary")
+        return empty
+    terms = data.get("terms")
+    doc_freq = data.get("doc_freq")
+    return {
+        "terms": {k: int(v) for k, v in (terms or {}).items()
+                  if isinstance(v, (int, float))} if isinstance(terms, dict) else {},
+        "doc_freq": {k: int(v) for k, v in (doc_freq or {}).items()
+                     if isinstance(v, (int, float))} if isinstance(doc_freq, dict) else {},
+        "documents": int(data["documents"]) if isinstance(
+            data.get("documents"), (int, float)) else 0,
+    }
 
 
 def save_vocab(terms: dict[str, int], path: Path = VOCAB_PATH,
@@ -168,7 +195,11 @@ def save_vocab(terms: dict[str, int], path: Path = VOCAB_PATH,
         tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, path)
         return True
-    except OSError:
+    except OSError as exc:
+        # `harvest` discards this return value, so a silent False meant the
+        # vocabulary stopped growing and nothing ever mentioned it.
+        net._warn(f"skills: could not write {path.name} ({exc}); "
+                  f"{len(terms)} term(s) harvested this run were not saved")
         return False
 
 

@@ -45,9 +45,22 @@ def now_iso():
 
 
 def read_log():
+    """Every usable row of usage_log.jsonl, saying how many were not usable.
+
+    A torn line is skipped rather than aborting the run -- the log is appended
+    to by concurrent workers, so a partial final line is normal. Skipping it
+    SILENTLY is the part that was wrong: every number this module produces is a
+    percentile over these rows, and percentiles do not announce that their
+    sample shrank. A log half of which fails to parse yields budgets tuned on
+    the other half and looks exactly like a clean run.
+
+    `job_store.read_sightings` reads the same shape of file and already counts
+    and reports its damaged lines; this now matches it.
+    """
     if not os.path.exists(USAGE_LOG):
         return []
     rows = []
+    damaged = 0
     with open(USAGE_LOG, "r", encoding="utf-8-sig") as fh:
         for line in fh:
             line = line.strip()
@@ -56,7 +69,11 @@ def read_log():
             try:
                 rows.append(json.loads(line))
             except json.JSONDecodeError:
-                continue  # skip a torn line rather than abort
+                damaged += 1
+    if damaged:
+        print(f"[calibrate_budgets] skipped {damaged} unparseable line(s) in "
+              f"{os.path.basename(USAGE_LOG)}; every statistic below is over "
+              f"the remaining {len(rows)}", file=sys.stderr)
     return rows
 
 

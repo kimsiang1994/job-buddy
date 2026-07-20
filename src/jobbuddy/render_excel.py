@@ -38,7 +38,10 @@ says which degradation was taken.
 from __future__ import annotations
 
 import csv
+import os
 import re
+import tempfile
+import threading
 import warnings
 from pathlib import Path
 from typing import Any
@@ -75,6 +78,8 @@ COLUMNS: tuple[tuple[str, str, int], ...] = (
 
 _ILLEGAL_SHEET = re.compile(r"[\[\]:*?/\\]")
 _warned: set[str] = set()
+# Guards the check-then-act in _warn_once. See that function.
+_warned_lock = threading.Lock()
 
 
 def _load_xlsxwriter():
@@ -88,15 +93,38 @@ def _load_xlsxwriter():
 
 
 def _warn_once(key: str, message: str) -> None:
-    if key in _warned:
-        return
-    _warned.add(key)
+    """One warning per key per process. Genuinely once, including under threads.
+
+    The membership test and the insert are one critical section. `set.add` being
+    atomic is not the property that was needed: two threads could both pass the
+    `key in _warned` check before either had added, and both then warn. The
+    tailoring stage runs under a ThreadPoolExecutor and calls this from the
+    degraded paths, so the window is reachable rather than theoretical -- a run
+    with four workers and no xlsxwriter could print the same "install
+    xlsxwriter" line four times, which is the exact noise `_warn_once` exists to
+    prevent.
+
+    `warnings.warn` is outside the lock. Emitting is slow (it walks the stack
+    for `stacklevel`) and a warning filter is arbitrary caller code; holding the
+    lock across it would serialise every degraded render behind the first one,
+    and a filter that itself warned would deadlock. The lock protects the
+    decision, not the printing.
+    """
+    with _warned_lock:
+        if key in _warned:
+            return
+        _warned.add(key)
     warnings.warn(message, RuntimeWarning, stacklevel=3)
 
 
 def reset_warning_cache() -> None:
-    """Forget which warnings have been emitted. For tests only."""
-    _warned.clear()
+    """Forget which warnings have been emitted. For tests only.
+
+    Takes the same lock as `_warn_once`, so a reset cannot land between that
+    function's check and its add.
+    """
+    with _warned_lock:
+        _warned.clear()
 
 
 # --------------------------------------------------------------------------
@@ -208,6 +236,29 @@ def write_workbook(jobs_by_scope: dict[str, list[dict[str, Any]]] | None,
 
     Never raises for a missing wheel: without `xlsxwriter` it writes one CSV per
     tab and reports `degraded="csv"`.
+
+    **`ok` is a fact about what reached the disk, not a constant.** It was
+    hard-coded True on both paths, including the degraded one where
+    `_write_csvs` skips any scope whose CSV fails to open -- so a run that wrote
+    two tabs out of three warned about the missing one and then handed the
+    caller `ok: True` with `sheets` and `rows` listing all three. The warning and
+    the machine-readable result said opposite things, and only one of them is
+    what a script reads. `sheets`, `rows` and `paths` now describe the scopes
+    that were actually written, `failed` names the rest, and `ok` is False
+    whenever `failed` is non-empty.
+
+    **The .xlsx is written to a temp file and moved into place.** `book.close()`
+    is where xlsxwriter does nearly all its real work -- assembling and zipping
+    the whole package -- so it is the likeliest single point of failure, and it
+    can fail with its file handle still open. Closing directly onto `out_path`
+    and then calling `out_path.unlink()` in the handler therefore raised
+    `PermissionError [WinError 32] used by another process` FROM the cleanup,
+    which replaced the real exception with a confusing complaint about
+    permissions. Writing to a temp file removes the question rather than
+    answering it: `out_path` is untouched until `os.replace` succeeds, so there
+    is nothing to unlink on the failing path, no half-written .xlsx can survive,
+    and an existing good workbook is never destroyed by a failed re-run. Same
+    pattern as `company_registry.save` and `user_input.save_current`.
     """
     jobs_by_scope = jobs_by_scope or {}
     out_path = Path(out_path)
@@ -220,15 +271,29 @@ def write_workbook(jobs_by_scope: dict[str, list[dict[str, Any]]] | None,
         _warn_once("xlsxwriter",
                    "xlsxwriter is not installed -- writing one CSV per scope "
                    "instead of a workbook: py -m pip install -e .[tailoring]")
-        paths = _write_csvs(ranked, out_path)
+        paths, failed = _write_csvs(ranked, out_path)
+        written_scopes = [scope for scope in ranked if scope not in failed]
+        note = "xlsxwriter missing; wrote CSV per scope instead of .xlsx"
+        if failed:
+            note += (f"; {len(failed)} of {len(ranked)} scope(s) could not be "
+                     f"written: {', '.join(sorted(failed))}")
         return {
-            "ok": True, "degraded": "csv", "path": out_path.parent,
-            "paths": paths, "sheets": list(ranked),
-            "rows": {scope: len(jobs) for scope, jobs in ranked.items()},
-            "note": "xlsxwriter missing; wrote CSV per scope instead of .xlsx",
+            "ok": not failed, "degraded": "csv", "path": out_path.parent,
+            "paths": paths, "sheets": written_scopes,
+            "rows": {scope: len(ranked[scope]) for scope in written_scopes},
+            "failed": failed,
+            "note": note,
         }
 
-    book = xlsxwriter.Workbook(str(out_path), {"constant_memory": False})
+    # Same directory as the destination, so os.replace stays on one filesystem
+    # and is therefore atomic. mkstemp gives a name no concurrent writer shares.
+    handle, tmp_name = tempfile.mkstemp(dir=str(out_path.parent),
+                                        prefix=f"{out_path.stem}.",
+                                        suffix=".xlsx.tmp")
+    os.close(handle)  # xlsxwriter opens the path itself.
+    tmp_path = Path(tmp_name)
+
+    book = xlsxwriter.Workbook(str(tmp_path), {"constant_memory": False})
     try:
         header_fmt = book.add_format({"bold": True, "bg_color": "#eeeeee",
                                       "bottom": 1})
@@ -251,15 +316,25 @@ def write_workbook(jobs_by_scope: dict[str, list[dict[str, Any]]] | None,
                          sparse_fmt, wrap_fmt)
         book.close()
     except Exception:
-        # A half-written .xlsx is unopenable and looks like a corrupt file
-        # rather than a failed run.
-        out_path.unlink(missing_ok=True)
+        # Only the temp file needs removing, and the destination is untouched.
+        # This unlink is itself guarded: if close() failed with the handle still
+        # open, Windows refuses the delete, and letting THAT escape would once
+        # again bury the real exception under a permission error. A stray .tmp
+        # is a far smaller problem than a lost diagnosis.
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError as cleanup_exc:
+            _warn_once(f"tmp:{tmp_path.name}",
+                       f"could not remove {tmp_path.name} ({cleanup_exc})")
         raise
+
+    os.replace(tmp_path, out_path)
 
     return {
         "ok": True, "degraded": None, "path": out_path, "paths": [out_path],
         "sheets": sheets,
         "rows": {scope: len(jobs) for scope, jobs in ranked.items()},
+        "failed": {},
         "note": "",
     }
 
@@ -322,13 +397,22 @@ def _write_sheet(sheet: Any, jobs: list[dict[str, Any]], header_fmt: Any,
 
 
 def _write_csvs(ranked: dict[str, list[dict[str, Any]]],
-                out_path: Path) -> list[Path]:
+                out_path: Path) -> tuple[list[Path], dict[str, str]]:
     """The degraded path: one CSV per scope, in the same sorted order.
 
-    utf-8-sig because Excel on Windows renders a plain-utf-8 CSV as mojibake,
-    and the whole point of this fallback is that a human can still open it.
+    Returns (paths written, {scope: reason} for those that were not). The
+    failures are returned rather than only warned about, because `write_workbook`
+    reports `ok` and per-scope `rows` to callers that never see a warning -- a
+    skipped scope that only warns is a scope the machine-readable result claims
+    was written.
+
+    One failing scope does not abandon the others: three CSVs of which two are
+    readable beats none. utf-8-sig because Excel on Windows renders a plain-utf-8
+    CSV as mojibake, and the whole point of this fallback is that a human can
+    still open it.
     """
     written: list[Path] = []
+    failed: dict[str, str] = {}
     headers = [h for h, _, _ in COLUMNS]
     for scope, jobs in ranked.items():
         path = out_path.parent / f"{out_path.stem}.{sheet_name(scope)}.csv"
@@ -340,6 +424,7 @@ def _write_csvs(ranked: dict[str, list[dict[str, Any]]],
                     writer.writerow(row_for(job, index))
             written.append(path)
         except OSError as exc:
+            failed[scope] = f"{type(exc).__name__}: {exc}"
             _warn_once(f"csv:{path.name}",
                        f"could not write {path.name} ({exc})")
-    return written
+    return written, failed

@@ -292,6 +292,11 @@ def to_job(record: dict[str, Any]) -> dict[str, Any] | None:
         "fetched_at": job["_normalised_at"],
         "salary": (
             "period_corrected" if job_schema.salary_was_adjusted(salary.get("maximum"), period)
+            # An unrecognised period is inferred from magnitude. Defensible, but
+            # it feeds the pay score, so a reader must be able to tell an
+            # inferred figure from a stated one.
+            else "period_guessed" if job_schema.salary_period_was_guessed(
+                salary.get("maximum"), period)
             else "asserted" if job["salary_is_stated"] else "hidden"
         ),
         "applications": "asserted" if job["applications"] is not None else "absent",

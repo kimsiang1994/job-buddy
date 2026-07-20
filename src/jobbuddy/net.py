@@ -322,7 +322,16 @@ def fetch(
             resp_headers = {k.lower(): v for k, v in (exc.headers or {}).items()}
             try:
                 raw, truncated = _read_capped(exc)
-            except Exception:
+            except (OSError, ValueError) as read_exc:
+                # An HTTPError is a readable file object, but only once and
+                # only while the connection lives -- a reset socket raises
+                # OSError here, and an already-consumed one raises ValueError
+                # ("I/O operation on closed file"). Both checked, not guessed.
+                # Swallowing that silently threw away the error BODY, which for
+                # Adzuna and Careerjet is the only place the actual reason
+                # ("bad app_key") appears. The status alone just says 403.
+                _warn(f"{current_url}: HTTP {status} body unreadable "
+                      f"({read_exc}); error detail lost")
                 raw, truncated = b"", False
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             status, resp_headers, raw, truncated = 0, {}, b"", False
@@ -418,15 +427,28 @@ def get_json(url: str, **kwargs: Any) -> tuple[Any | None, FetchResult]:
 
 
 def clear_cache(cache_dir: Path | None = None) -> int:
-    """Delete the on-disk HTTP cache. Returns the file count removed."""
+    """Delete the on-disk HTTP cache. Returns the file count removed.
+
+    Reports what it could not delete. `clear_cache` is what you run when you
+    suspect a stale entry is feeding you an old answer, so silently skipping
+    the locked file and returning a healthy-looking count is the worst possible
+    reply -- you re-run the pipeline, get the same wrong result, and conclude
+    the bug is somewhere else.
+    """
     root = cache_dir or CACHE_DIR
     if not root.is_dir():
         return 0
     removed = 0
+    failed = 0
     for path in root.rglob("*.json"):
         try:
             path.unlink()
             removed += 1
-        except OSError:
-            pass
+        except OSError as exc:
+            failed += 1
+            _warn(f"could not delete cache entry {path.name} ({exc}); "
+                  f"it will keep being served until its TTL expires")
+    if failed:
+        _warn(f"cache not fully cleared: {failed} entr(ies) survived, "
+              f"{removed} removed")
     return removed

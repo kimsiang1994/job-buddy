@@ -116,11 +116,22 @@ def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
 
 
 def _state(value: float | None, confidence: float | None) -> str:
-    """The three honesty states. See the module docstring."""
+    """The three honesty states. See the module docstring.
+
+    An unreadable confidence stays None rather than defaulting to 1.0. It does
+    not downgrade a component that WAS measured -- an unknown run-level
+    confidence is not evidence that this bar is weak -- but it must not be
+    laundered into "100% confident" either, because that same value is what
+    `component_bars` prints in the caption.
+    """
     if value is None:
         return UNMEASURED
-    conf = _num(confidence, 1.0)
-    return LOW if conf is not None and conf < LOW_CONFIDENCE else MEASURED
+    conf = _num(confidence)
+    if conf is None:
+        # Unknown run confidence: report the component as measured, since it
+        # was, and let the caption say the confidence itself is not measured.
+        return MEASURED
+    return LOW if conf < LOW_CONFIDENCE else MEASURED
 
 
 def _fill(state: str) -> str:
@@ -168,7 +179,14 @@ def component_bars(scores: dict[str, Any] | None,
     """
     scores = scores or {}
     components: dict[str, Any] = scores.get("components") or {}
-    confidence = _num(scores.get("confidence"), 1.0)
+    # No default. `_num(..., 1.0)` here meant a job with no `confidence` key
+    # rendered as 100% confident: every bar solid, and the caption printing the
+    # neutral "0-100 per component" instead of the low-confidence warning. It
+    # also made the `confidence is None` branches below unreachable, which is
+    # the evidence the default was never intended -- the author wrote a "not
+    # measured" state that the defaulting silently ate. This module's whole
+    # thesis is that absent evidence must not be drawn confidently.
+    confidence = _num(scores.get("confidence"))
 
     rows = list(components.items())
     height = PAD * 2 + 22 + max(len(rows), 1) * ROW_H
