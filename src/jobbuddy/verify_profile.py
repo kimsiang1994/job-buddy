@@ -58,6 +58,18 @@ def normalise(text: str) -> str:
     for src, dst in _PUNCT_MAP.items():
         text = text.replace(src, dst)
     text = re.sub(r"\s+", " ", text)
+    # pypdf inserts a space before a hyphen inside a compound word: the PDF
+    # holds "end -to-end", "un -synced", "LLM -generated" where the document
+    # reads "end-to-end". Four facts were rejected as paraphrases because of
+    # it, and the transcription had been correct every time -- the verifier was
+    # comparing against mangled extraction output and blaming the model.
+    #
+    # Anchored to LETTERS on both sides, so a genuine spaced dash between
+    # numbers ("10 - 5", "2021 - 2024") is left alone. Spaces appear on either
+    # side or both: the PDF holds "un -synced" and "LLM - powered".
+    text = re.sub(r"([A-Za-z])\s*-\s*([A-Za-z])", r"\1-\2", text)
+    # Same extractor, same class of artefact: "Live and in use ."
+    text = re.sub(r"\s+([.,;:])", r"\1", text)
     return text.strip().lower()
 
 

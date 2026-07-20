@@ -74,6 +74,35 @@ class NormalisationForgivesLayoutNotContent(unittest.TestCase):
             TRUE_FACT, verify_profile.normalise(RESUME_TEXT))
         self.assertEqual(problems, [], problems)
 
+    def test_a_pdf_space_before_a_hyphen_does_not_cause_a_false_rejection(self):
+        """pypdf extracts "end-to-end" as "end -to-end".
+
+        Four true facts were rejected as paraphrases over this, and the
+        transcription had been correct every time -- the verifier was comparing
+        against mangled extraction output and blaming the model. The cost was
+        not just the four: it was believing the extractor paraphrases, which is
+        the opposite of what it does.
+        """
+        # Three variants of the same artefact, all seen in one real PDF:
+        # space before the hyphen, spaces on both sides, and space before a
+        # full stop.
+        resume = ("Built the end -to-end RAG pipeline with LLM - generated "
+                  "output . Live and in use .")
+        fact = dict(TRUE_FACT,
+                    source_span="Built the end-to-end RAG pipeline with "
+                                "LLM-generated output. Live and in use.",
+                    numbers=[], entities=[], org="", role="",
+                    start=None, end=None)
+        problems = verify_profile.check_fact(
+            fact, verify_profile.normalise(resume))
+        self.assertEqual(problems, [], problems)
+
+    def test_a_genuine_spaced_dash_between_numbers_is_left_alone(self):
+        """The fix must not weld "10 - 5" into "10-5", so it anchors on
+        letters rather than on word characters."""
+        self.assertIn("10 - 5", verify_profile.normalise("cut 10 - 5 days"))
+        self.assertIn("2021 - 2024", verify_profile.normalise("MITB 2021 - 2024"))
+
     def test_smart_punctuation_does_not_break_matching(self):
         fact = dict(TRUE_FACT,
                     source_span="Built a retrieval pipeline serving 12 million daily requests",
