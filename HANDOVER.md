@@ -17,32 +17,48 @@ once.
 
     FAILED_AT_tailor: AttributeError: 'NoneType' object has no attribute 'get'
 
-**What is known:**
+**What is known. Every observed run, in order:**
 
-| Observation | Detail |
-|---|---|
-| Fails under concurrency | 3 jobs -> 3 ok · 2 jobs -> 1 failed · 4 jobs -> 3 failed |
-| Succeeds in isolation | Calling `tailor.tailor()` directly on a job that just failed works every time, repeatedly |
-| Degrades safely | Failure isolation holds: the run continues, each failure is recorded, the workbook is still written |
-| Possibly related | Every run prints `[model_config] config unavailable` at startup |
+| Run | Jobs in flight | Result |
+|---|---|---|
+| 1 | 3 | 3 ok |
+| 2 | 2 | 1 ok, 1 failed |
+| 3 | 4 | 1 ok, 3 failed |
+| 4 | 3 | 3 ok — *the same jobs that failed in run 3* |
 
-The pattern — clean in isolation, worse with more parallelism — points at shared
-mutable state on the threaded path. `deepseek_client` and `model_config` are the
-first places to look. `_prepare_job` runs in a `ThreadPoolExecutor` and is
-documented as touching no shared state, so either that documentation is wrong or
-something underneath it is.
+Also: calling `tailor.tailor()` directly on a job that had just failed succeeds
+every time. Failure isolation holds throughout — the run continues, each failure
+is recorded, the workbook is still written. Every run prints
+`[model_config] config unavailable` at startup, which may or may not be related.
+
+**It is intermittent, and it is NOT simply concurrency.** An earlier draft of
+this handover said the pattern pointed at shared mutable state on the threaded
+path. Run 4 contradicts that: three jobs in flight succeeded twice, while two
+jobs in flight produced a failure. The rate does not track parallelism
+monotonically, and the exact jobs that failed in run 3 all passed in run 4.
+
+The likelier explanation is a transient API response that hits a `None`-handling
+gap — a shape `json_chat` or its callers do not expect, arriving under load or
+rate limiting. That is a guess, and it is labelled as one. **Do not treat either
+diagnosis as established.** Get the traceback first.
+
+The reason this matters: a confident wrong lead costs more than no lead, because
+the next person spends their time auditing thread safety in a module that is
+fine.
 
 **How to see it:**
 
     py -m jobbuddy.cli --scope ai-engineer-sg --tailor --tailor-top 4 --max-cost 0.60
 
 The CLI now prints the last six traceback frames under any failed job, so the
-first run should name the file and line. That printing was added specifically
-because the previous session burned several cycles on an exception message with
-no location attached.
+run that reproduces it will name the file and line. That printing was added
+specifically because the previous session burned several cycles on an exception
+message with no location attached — and then, having added it, could not
+reproduce the failure again to use it. Expect to run the stage a few times.
 
 **Do not** "fix" this by lowering `TAILOR_WAVE` to 1. That hides it, and the
-stage is meant to run over dozens of jobs.
+stage is meant to run over dozens of jobs. It would also be fixing a cause
+nobody has confirmed.
 
 ---
 
