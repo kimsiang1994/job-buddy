@@ -80,27 +80,34 @@ def overflowing(count: int = 40) -> dict:
 
 
 def split_across_pages() -> dict:
-    """Ranks 2 and 3 sit in a role that renders after a very long first role.
+    """Ranks 2 and 3 sit in the OLDER role, behind a very long recent one.
 
-    This is a real layout outcome, not a contrivance: roles are grouped, so a
-    high-ranked bullet belonging to the second role is pushed down by every
-    bullet of the first. It is exactly the case where page count says "fine"
-    and the screener never sees the candidate's second-best evidence.
+    A real layout outcome, not a contrivance: roles render newest first and
+    bullets are grouped under them, so a high-ranked bullet belonging to an
+    earlier job is pushed down by every bullet of the current one. Exactly the
+    case where page count says "fine" and the screener never sees the
+    candidate's second-best evidence.
+
+    The filler deliberately sits in the RECENT role. An earlier version of this
+    fixture put it in the older one and relied on roles being ordered by bullet
+    rank -- which was itself the chronology bug, so the fixture only reproduced
+    the failure while that bug was present.
     """
-    bullets = [bullet("Cut data generation from 10 to 5 working days by "
-                      "automating 4 ETL processes in PySpark", "umbra.etl")]
-    bullets += [
+    recent = ("Northwind Labs", "AI Engineer", "2024-08", "")
+    bullets = [
         bullet("Built a retrieval pipeline serving 12 million daily requests "
-               "in PyTorch", "northwind.retrieval", "Northwind Labs",
-               "AI Engineer", "2024-08", ""),
-        bullet("Cut p99 latency from 340ms to 90ms on the serving path",
-               "northwind.latency", "Northwind Labs", "AI Engineer",
-               "2024-08", ""),
+               "in PyTorch", "northwind.retrieval", *recent),
+    ]
+    bullets += [
+        bullet("Cut data generation from 10 to 5 working days by "
+               "automating 4 ETL processes in PySpark", "umbra.etl"),
+        bullet("Built data-quality checks that halved debugging time",
+               "umbra.quality"),
     ]
     bullets += [
         bullet(f"Filler achievement {i} " + " ".join(
             ["describing a measured outcome across the platform"] * 4),
-            f"umbra.filler.{i}")
+            f"northwind.filler.{i}", *recent)
         for i in range(4, 40)
     ]
     return {"headline": TAILORED["headline"], "bullets": bullets}
@@ -134,10 +141,33 @@ class TheModelIsTheSingleSourceOfTruth(unittest.TestCase):
         self.assertEqual([b["rank"] for b in model["bullets"]], [1, 2, 3, 4])
         self.assertEqual(model["bullets"][0]["fact_id"], "northwind.retrieval")
 
-    def test_the_role_holding_the_top_bullet_leads(self):
-        """Not reverse-chronological: every role shown was selected for this job."""
+    def test_roles_are_reverse_chronological_not_rank_ordered(self):
+        """Ranking roles produced a resume running 2022, 2026, 2023 -- a
+        shuffled work history, which a reader takes for an error rather than
+        for emphasis. Rank orders bullets WITHIN a role, where it means
+        something; date orders the roles."""
         model = model_for(TAILORED)
+        self.assertEqual([r["org"] for r in model["roles"]],
+                         ["Northwind Labs", "Umbra Financial"])
+
+    def test_the_most_recent_role_leads_even_when_it_ranks_lower(self):
+        """The case the previous test cannot distinguish, because there the
+        top-ranked role is also the most recent."""
+        tailored = {"headline": "", "bullets": [
+            bullet("Cut data generation from 10 to 5 working days",
+                   "umbra.etl"),
+            bullet("Built a retrieval pipeline serving 12 million requests",
+                   "northwind.retrieval", "Northwind Labs", "AI Engineer",
+                   "2024-08", ""),
+        ]}
+        model = model_for(tailored)
         self.assertEqual(model["roles"][0]["org"], "Northwind Labs")
+
+    def test_every_employer_survives_into_the_model(self):
+        """A job dropped from the resume is a gap in the work history."""
+        model = model_for(TAILORED)
+        self.assertEqual({r["org"] for r in model["roles"]},
+                         {"Northwind Labs", "Umbra Financial"})
 
     def test_contact_details_live_in_the_model_body_not_a_header(self):
         model = model_for(TAILORED)
@@ -250,13 +280,13 @@ class PageOneIsWhatActuallyGetsRead(RenderCase):
         by_rank = {b["rank"]: b for b in report["top_bullets"]}
         self.assertTrue(by_rank[1]["on_page_one"])
         self.assertFalse(by_rank[2]["on_page_one"])
-        self.assertIn("rank 2 bullet (northwind.retrieval)", report["missing"])
+        self.assertIn("rank 2 bullet (umbra.etl)", report["missing"])
 
     def test_the_report_says_what_made_it_as_well_as_what_did_not(self):
         model = model_for(split_across_pages())
         result = render_resume.render(model, self.out, max_pages=2)
         report = render_resume.page_one_sufficiency(result["pdf"]["path"], model)
-        self.assertEqual(report["made_it"], ["umbra.etl"])
+        self.assertEqual(report["made_it"], ["northwind.retrieval"])
         self.assertTrue(report["missing"])
 
     def test_a_skills_block_below_the_break_is_reported(self):

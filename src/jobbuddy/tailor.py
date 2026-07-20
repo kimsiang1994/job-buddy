@@ -30,9 +30,12 @@ from typing import Any, Callable
 
 from jobbuddy import fact_guard, strategies
 
-# More than this and the one-page renderer is guaranteed to be cutting, which
-# wastes selection effort on bullets nobody will read.
-MAX_BULLETS = 14
+# A ceiling, not a target, and deliberately generous. An earlier value of 14
+# was arbitrary: it cut real, relevant, verified content before the page had
+# said it was full. Bullets are the densest readable way to present experience,
+# so nothing is dropped for tidiness -- only the renderer cuts, and only after
+# shrinking to the type floor has failed to make the page fit.
+MAX_BULLETS = 60
 
 SELECTION_SCHEMA = """Reply with JSON:
 
@@ -41,8 +44,14 @@ SELECTION_SCHEMA = """Reply with JSON:
  "headline": "optional one-line positioning, using only words from the facts",
  "unaddressed": ["JD requirements no fact answers"]}"""
 
-SELECTION_RULES = """You choose which of a candidate's VERIFIED facts belong on
-a one-page resume for one specific job. You do not write new material.
+SELECTION_RULES = """You RANK a candidate's VERIFIED facts for one specific
+job. You do not write new material, and you do not leave facts out.
+
+RANK EVERY FACT IN THE LIST. All of them, most relevant first. Dropping facts
+is the renderer's job, not yours -- it cuts from the bottom of your ranking
+only when the page overflows. An earlier version of this prompt asked which
+facts "belong on the resume", and the result was a page listing one bullet per
+employer with half of it empty, next to a source resume carrying thirteen.
 
 RULES:
 
@@ -53,7 +62,8 @@ RULES:
    and the approved phrasing used instead, so inventing costs you the edit.
 3. Rank by how directly the fact answers THIS job's stated requirements. Rank 1
    is the single most relevant thing this candidate has done. The bottom of
-   your ranking will be cut to fit one page -- rank accordingly.
+   your ranking is what gets cut if the page overflows -- rank accordingly, but
+   still return every fact.
 4. `unaddressed` must be honest. Listing a requirement the candidate cannot
    meet is useful; pretending it is covered is not. Do not stretch a fact to
    cover a requirement it does not actually demonstrate.
@@ -150,6 +160,58 @@ def select(profile: dict[str, Any], job: dict[str, Any],
     }
 
 
+def _restore_missing_roles(bullets: list[dict[str, Any]],
+                           facts_by_id: dict[str, dict[str, Any]]
+                           ) -> list[dict[str, Any]]:
+    """Put back any employer the selection dropped entirely.
+
+    Selection ranks bullets, and a job whose bullets all rank low can end up
+    with none selected -- so the employer vanishes from the resume. That is not
+    tailoring, it is a gap in the work history, and a reader who notices a
+    missing year reads it as something concealed.
+
+    A resume is a fixed skeleton -- every role, most recent first -- and
+    tailoring decides emphasis WITHIN it. So each employer absent from the
+    selection is restored with its own best-ranked approved phrasing, appended
+    after the selected material. It ranks last, which is correct: the renderer
+    should cut a restored bullet before a chosen one, but only after shrinking
+    has failed.
+
+    The restored line is an approved phrasing, so it needs no further gating --
+    it is already the text a human verified.
+    """
+    # Nothing selected means selection failed or the model returned nothing.
+    # Restoring into that assembles a resume out of whatever facts exist, from
+    # a run that made no decisions -- which looks like success and is not.
+    if not bullets:
+        return bullets
+
+    chosen_orgs = {b.get("org") for b in bullets if b.get("org")}
+    restored: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for fact in facts_by_id.values():
+        org = fact.get("org")
+        if not org or org in chosen_orgs or org in seen:
+            continue
+        phrasings = fact.get("phrasings") or []
+        if not phrasings:
+            continue
+        seen.add(org)
+        restored.append({
+            "text": str(phrasings[0]),
+            "fact_id": str(fact.get("fact_id") or ""),
+            "org": org,
+            "role": fact.get("role"),
+            "start": fact.get("start"),
+            "end": fact.get("end"),
+            "fell_back": False,
+            "restored": True,
+        })
+
+    return bullets + restored
+
+
 def tailor(profile: dict[str, Any], job: dict[str, Any],
            requirements: list[str] | None = None,
            chat: Callable[..., dict[str, Any]] | None = None,
@@ -217,6 +279,8 @@ def tailor(profile: dict[str, Any], job: dict[str, Any],
             "end": fact.get("end"),
             "fell_back": bool(verdict and verdict.fallback_used),
         })
+
+    bullets = _restore_missing_roles(bullets, facts_by_id)
 
     active, strategy_problems = strategies.resolve(strategy_names)
     # After the guard, never before. A transform running first could introduce

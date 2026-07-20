@@ -74,7 +74,7 @@ MAX_PDF_BYTES = 100 * 1024
 # Conventional, in this order. Unconventional headings are the documented
 # per-vendor parsing failure, so these strings are not a style choice.
 HEADING_EXPERIENCE = "Experience"
-HEADING_SKILLS = "Skills"
+HEADING_SKILLS = "Technical Skills"
 HEADING_EDUCATION = "Education"
 
 # How many top-ranked bullets must clear the page-1 break to call the render
@@ -164,21 +164,27 @@ def build_model(profile: dict[str, Any], tailored: dict[str, Any]) -> dict[str, 
 
     Bullets keep `tailor()`'s rank order, which is load-bearing twice over: the
     fitter cuts from the end of this list, and `page_one_sufficiency` reads the
-    front of it. Roles are ordered by their best-ranked bullet rather than by
-    date, so the role that answers this job leads -- the reverse-chronological
-    convention costs a screener nothing here, because every role shown was
-    selected for this job in the first place.
+    front of it. ROLES, however, are ordered by date -- see `group_roles`. An
+    earlier version ordered roles by their best-ranked bullet on the reasoning
+    that the most relevant job should lead. It produced a resume running Olea
+    2022, TikTok 2026, Citibank 2023: chronology shuffled, which a reader takes
+    for a mistake rather than for emphasis.
     """
     identity = profile.get("identity") or {}
+    notes = {(f.get("org"), f.get("role")): f.get("note")
+             for f in (profile.get("facts") or []) if f.get("note")}
+
     bullets: list[dict[str, Any]] = []
     for rank, bullet in enumerate(tailored.get("bullets") or [], start=1):
+        org, role = bullet.get("org") or "", bullet.get("role") or ""
         bullets.append({
             "text": str(bullet.get("text") or "").strip(),
             "fact_id": str(bullet.get("fact_id") or ""),
-            "org": bullet.get("org") or "",
-            "role": bullet.get("role") or "",
+            "org": org,
+            "role": role,
             "start": bullet.get("start") or "",
             "end": bullet.get("end") or "",
+            "note": bullet.get("note") or notes.get((org, role)) or "",
             "rank": rank,
         })
 
@@ -194,23 +200,61 @@ def build_model(profile: dict[str, Any], tailored: dict[str, Any]) -> dict[str, 
         "headline": str(tailored.get("headline") or "").strip(),
         "bullets": bullets,
         "roles": group_roles(bullets),
+        # Grouped skills win when the profile has them. The flat list reads as
+        # machine output -- "llm, rag, huggingface transformers" in lowercase
+        # slugs is a database dump, not a skills section.
+        "skill_groups": list(profile.get("skill_groups") or []),
         "skills": _flatten_skills(profile.get("skills_declared") or {}),
         "education": list(profile.get("education") or []),
+        "languages": list(profile.get("languages") or []),
     }
 
 
 def group_roles(bullets: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Bullets grouped under their role, best-ranked role first."""
+    """Bullets grouped under their role, most recent role first.
+
+    Ordered by START DATE DESCENDING, not by bullet rank. Ranking the roles
+    put a 2022 job above a 2026 one and a 2023 job between them -- a resume
+    with its chronology shuffled, which reads as an error rather than as
+    emphasis. Rank still orders bullets WITHIN a role, where it means
+    something.
+
+    A role with no date sorts last rather than first, so a missing date cannot
+    promote a job above the current one.
+    """
     roles: dict[tuple, dict[str, Any]] = {}
     for bullet in bullets:
         key = (bullet["org"], bullet["role"], bullet["start"], bullet["end"])
         role = roles.setdefault(key, {
             "org": bullet["org"], "role": bullet["role"],
             "start": bullet["start"], "end": bullet["end"],
+            "note": bullet.get("note") or "",
             "bullets": [],
         })
         role["bullets"].append(bullet)
-    return sorted(roles.values(), key=lambda r: min(b["rank"] for b in r["bullets"]))
+
+    for role in roles.values():
+        role["bullets"].sort(key=lambda b: b.get("rank") or 999)
+
+    return sorted(roles.values(),
+                  key=lambda r: str(r.get("start") or ""), reverse=True)
+
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def format_month(value: Any) -> str:
+    """'2023-08' -> 'Aug 2023'. A resume does not print ISO dates."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    parts = text[:7].split("-")
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        month = int(parts[1])
+        if 1 <= month <= 12:
+            return f"{_MONTHS[month - 1]} {parts[0]}"
+    return text
 
 
 def _flatten_skills(declared: dict[str, Any]) -> list[str]:
@@ -231,10 +275,11 @@ def _flatten_skills(declared: dict[str, Any]) -> list[str]:
 
 
 def _date_range(role: dict[str, Any]) -> str:
-    start, end = role.get("start") or "", role.get("end") or ""
+    start = format_month(role.get("start"))
+    end = format_month(role.get("end"))
     if not start and not end:
         return ""
-    return f"{start} - {end or 'Present'}"
+    return f"{start} – {end or 'Present'}"
 
 
 # --------------------------------------------------------------------------
@@ -271,20 +316,39 @@ def build_typst_source(model: dict[str, Any], scale: float = SCALE_MAX,
     leading_em = round(0.50 + 0.20 * scale, 3)
     gap_em = round(0.55 + 0.35 * scale, 3)
 
+    rule_pt = round(0.5 * scale, 3)
+
     lines = [
         f"#set document(title: {_quote(model.get('name'))} + \" resume\", "
         f"author: {_quote(model.get('name'))})",
         # `header: none, footer: none` is stated rather than left to the default
         # so a later edit has to argue with it.
-        f"#set page(paper: \"a4\", margin: {margin_in}in, header: none, footer: none)",
+        f"#set page(paper: \"a4\", margin: (x: {margin_in}in, y: "
+        f"{round(margin_in * 0.85, 3)}in), header: none, footer: none)",
         # hyphenate off keeps a bullet's words intact for substring checks and
         # for the extractor; justify off is what makes that the default.
         f"#set text(size: {font_pt}pt, hyphenate: false)",
         f"#set par(leading: {leading_em}em, justify: false)",
         f"#set block(spacing: {gap_em}em)",
+        # Tight hanging indent, so a wrapped bullet lines up under its text
+        # rather than under the marker.
+        f"#set list(indent: 0pt, body-indent: {round(font_pt * 0.5, 2)}pt, "
+        f"spacing: {round(gap_em * 0.55, 3)}em, marker: [•])",
+        # A section heading is a rule, the title, and another rule. This is the
+        # single most recognisable feature of the source document's layout, and
+        # rebuilding it from a plain bold line is what made earlier output read
+        # as a different resume rather than a tailored one.
+        # `stack` rather than a block of separate paragraphs. Inside a block,
+        # each element picks up `par.leading` and `block.spacing`, which pushed
+        # the rules far away from the title and turned a tight banded heading
+        # into three airy lines. `stack` controls the gap explicitly.
         "#show heading: it => block(above: "
-        f"{gap_em}em, below: {round(gap_em * 0.5, 3)}em)[#text(size: "
-        f"{heading_pt}pt, weight: \"bold\", upper(it.body))]",
+        f"{round(gap_em * 0.85, 3)}em, below: {round(gap_em * 0.3, 3)}em)[",
+        f"  #stack(dir: ttb, spacing: {round(font_pt * 0.2, 2)}pt,",
+        f"    line(length: 100%, stroke: {rule_pt}pt),",
+        f"    text(size: {heading_pt}pt, weight: \"bold\")[#upper(it.body)],",
+        f"    line(length: 100%, stroke: {rule_pt}pt))",
+        "]",
         "",
         # Contact details in the body, centred with plain text -- not a table,
         # not a graphic, not a header.
@@ -294,12 +358,24 @@ def build_typst_source(model: dict[str, Any], scale: float = SCALE_MAX,
     contact = model.get("contact") or []
     if contact:
         joined = " | ".join(_escape(c) for c in contact)
-        lines.append(f"  \\\n  {joined}")
+        lines.append(f"  \\\n  #text(size: {round(font_pt * 0.98, 2)}pt)[{joined}]")
     lines.append("]")
     lines.append("")
 
-    if model.get("headline"):
+    # The source document has no summary line, and matching it matters more
+    # than the tailoring a headline buys: a section the original does not have
+    # is the first thing that makes a resume look like a different document.
+    # Kept available, off unless asked for.
+    if model.get("headline") and model.get("show_headline"):
         lines.append(_escape(model["headline"]))
+        lines.append("")
+
+    education = model.get("education") or []
+    if education:
+        lines.append(f"= {HEADING_EDUCATION}")
+        lines.append("")
+        for entry in education:
+            lines.extend(_education_block(entry))
         lines.append("")
 
     if roles:
@@ -307,35 +383,74 @@ def build_typst_source(model: dict[str, Any], scale: float = SCALE_MAX,
         lines.append("")
         for role in roles:
             dates = _date_range(role)
-            heading = f"*{_escape(role['role'])}*, {_escape(role['org'])}"
+            # Company FIRST and bold, then the title. The source document reads
+            # "*TikTok*, AI Engineer, Global Marketing Science" -- inverting it
+            # to lead with the title changes what the eye lands on when a
+            # screener skims the left edge of the page.
+            heading = f"*{_escape(role['org'])}*, {_escape(role['role'])}"
             if dates:
                 heading += f" #h(1fr) {_escape(dates)}"
+            if role.get("note"):
+                # Trailing backslash forces a line break. Without it Typst
+                # joins consecutive markup lines into one paragraph, and the
+                # note ran on after the date: "Feb 2026 - Present TikTok
+                # Inspire Award recipient" as a single line.
+                heading += f" \\\n_{_escape(role['note'])}_"
             lines.append(heading)
             lines.append("")
             for bullet in role["bullets"]:
                 lines.append(f"- {_escape(bullet['text'])}")
             lines.append("")
 
-    if model.get("skills"):
+    skill_groups = model.get("skill_groups") or []
+    if skill_groups:
+        lines.append(f"= {HEADING_SKILLS}")
+        lines.append("")
+        for group in skill_groups:
+            label = _escape(group.get("label") or "")
+            items = ", ".join(_escape(s) for s in (group.get("items") or []))
+            if items:
+                lines.append(f"*{label}:* {items}" if label else items)
+                lines.append("")
+    elif model.get("skills"):
         lines.append(f"= {HEADING_SKILLS}")
         lines.append("")
         lines.append(", ".join(_escape(s) for s in model["skills"]))
         lines.append("")
 
-    if model.get("education"):
-        lines.append(f"= {HEADING_EDUCATION}")
+    languages = model.get("languages") or []
+    if languages:
+        lines.append("= Languages")
         lines.append("")
-        for entry in model["education"]:
-            if isinstance(entry, dict):
-                parts = [entry.get("qualification"), entry.get("institution"),
-                         entry.get("year")]
-                text = ", ".join(str(p) for p in parts if p)
-            else:
-                text = str(entry)
-            lines.append(f"- {_escape(text)}")
+        lines.append("; ".join(_escape(l) for l in languages))
         lines.append("")
 
     return "\n".join(lines) + "\n"
+
+
+def _education_block(entry: Any) -> list[str]:
+    """One institution: bold name, italic qualifications, then any bullets."""
+    if not isinstance(entry, dict):
+        return [f"- {_escape(entry)}", ""]
+
+    # One paragraph with an explicit break, for the same reason as the role
+    # heading: separate markup lines would merge and put the degree on the same
+    # line as the institution.
+    head = ""
+    institution = _escape(entry.get("institution") or "")
+    if institution:
+        head = f"*{institution}*"
+    qualification = _escape(entry.get("qualification") or "")
+    if qualification:
+        head += (" \\\n" if head else "") + f"_{qualification}_"
+
+    out: list[str] = []
+    if head:
+        out.append(head)
+    out.append("")
+    for bullet in entry.get("bullets") or []:
+        out.append(f"- {_escape(bullet)}")
+    return out
 
 
 def _quote(value: Any) -> str:

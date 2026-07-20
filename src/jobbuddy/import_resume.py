@@ -32,7 +32,14 @@ REQUIRED_FACT_KEYS = ("fact_id", "source_span")
 
 SYSTEM_PROMPT = """You extract atomic, verifiable facts from a resume.
 
-Return JSON: {"facts": [...], "skills_declared": {...}, "identity": {...}}
+Return JSON: {"facts": [...], "skills_declared": {...}, "skill_groups": [...],
+              "education": [...], "languages": [...], "identity": {...}}
+
+A resume is a fixed skeleton -- education, roles newest first, skills,
+languages -- and every part of it must come back. An earlier version of this
+prompt asked only for `facts`, so an entire degree and the publications under
+it were silently absent from every generated resume. If the source document
+has a section, it belongs in the output.
 
 Each fact is ONE accomplishment or role, shaped as:
   fact_id      short dotted slug, e.g. "citibank.etl.automation"
@@ -55,9 +62,28 @@ RULES, in order of importance:
    is recoverable; inventing one is not.
 4. One bullet in, one fact out. Do not summarise across bullets.
 
+A fact may also carry:
+  note   a short line sitting under the role heading and above its bullets,
+         copied verbatim -- e.g. an award, or a reporting line. Put it on
+         every fact for that role.
+
 identity: {"name", "email", "phone", "location", "links"} -- copied verbatim.
+
+education: [{"institution", "qualification", "bullets": []}] -- institution and
+qualification copied verbatim, including date ranges as written. `bullets` holds
+any achievement lines under that institution, copied verbatim.
+
+skill_groups: [{"label", "items": []}] -- the resume's OWN skill groupings and
+its OWN labels and capitalisation, e.g. label "AI / ML" with items
+["LLMs (OpenAI, Claude, Gemini)", "RAG pipelines", ...]. Copy the wording as
+written. Do not lowercase, do not split a parenthesised list into separate
+items, do not invent groups the resume does not have.
+
+languages: ["English (fluent)", ...] -- copied verbatim.
+
 skills_declared: {"expert": [], "working": [], "familiar": []} -- assign a tier
-only from evidence in the resume; when unsure use "familiar"."""
+only from evidence in the resume; when unsure use "familiar". This is internal
+ranking, separate from skill_groups, which is what gets printed."""
 
 
 def read_pdf_text(pdf_path: Path) -> str:
@@ -120,6 +146,9 @@ def extract_facts(resume_text: str,
         "ok": True,
         "facts": facts,
         "skills_declared": data.get("skills_declared") or {},
+        "skill_groups": data.get("skill_groups") or [],
+        "education": data.get("education") or [],
+        "languages": data.get("languages") or [],
         "identity": data.get("identity") or {},
         "repaired": bool(result.get("repaired")),
     }
@@ -154,6 +183,8 @@ def build_draft(extracted: dict[str, Any], resume_text: str,
         fact["skills"] = [str(s).lower() for s in (fact.get("skills") or [])]
         span = str(fact.get("source_span") or "")
         fact["source_span"] = span
+        if fact.get("note"):
+            fact["note"] = str(fact["note"]).strip()
         if not fact.get("phrasings"):
             fact["phrasings"] = [span] if span else []
         # Set here rather than trusted from the model, so a model that helpfully
@@ -169,6 +200,11 @@ def build_draft(extracted: dict[str, Any], resume_text: str,
         "_resume_text_chars": len(resume_text),
         "identity": extracted.get("identity") or {},
         "skills_declared": extracted.get("skills_declared") or {},
+        # The printed sections. Absent from the first version of this schema,
+        # so every generated resume silently lost an entire degree.
+        "skill_groups": extracted.get("skill_groups") or [],
+        "education": extracted.get("education") or [],
+        "languages": extracted.get("languages") or [],
         # Seeded empty so the file shows the user the shape they may fill in.
         # fact_guard reads never_claim; an absent key is an empty denylist,
         # which is exactly the wrong default to leave implicit.

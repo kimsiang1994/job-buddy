@@ -123,7 +123,11 @@ class SelectionCannotEmitUngatedText(unittest.TestCase):
                      {"fact_id": "umbra.etl", "rank": 2}])
         result = tailor.tailor(PROFILE, JOB_DATA, chat=chat)
         self.assertEqual(result["unknown_fact_ids"], ["nonexistent.fact"])
-        self.assertEqual(len(result["bullets"]), 1)
+        # The invented id contributes nothing; the real one is kept. The other
+        # employer is then restored, because an employer absent from the
+        # selection is a gap in the work history rather than a tailoring choice.
+        self.assertNotIn("Impressive", [b["text"] for b in result["bullets"]])
+        self.assertIn("umbra.etl", [b["fact_id"] for b in result["bullets"]])
 
     def test_an_unverified_fact_cannot_be_selected(self):
         chat = stub([{"fact_id": "unverified.thing", "rank": 1}])
