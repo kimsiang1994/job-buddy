@@ -118,13 +118,49 @@ def read_pdf_text(pdf_path: Path) -> str:
     return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
+def read_resume(path: Path) -> str:
+    """Text from a resume in any supported format.
+
+    Delegates to `user_input.read_resume_text`, which already handles pdf,
+    docx, txt and md with one try block per operation and a reason that names
+    the failing step. This module used to carry its own PDF-only reader, so a
+    .docx in `input/` was invisible twice over -- `find_resume` did not glob it
+    and this could not have read it if it had.
+
+    Raises with the delegated reason rather than returning empty: an unreadable
+    resume cannot be tailored, and there is no useful degraded mode.
+    """
+    from jobbuddy import user_input
+
+    text, how = user_input.read_resume_text(path)
+    if not text.strip():
+        raise ValueError(f"could not read {Path(path).name}: {how}")
+    return text
+
+
+# Kept because the tests and the notebook both name it, and because a PDF is
+# still the common case. New callers should use `read_resume`.
+def read_pdf_text(pdf_path: Path) -> str:
+    """Text from a resume PDF. Thin wrapper over `read_resume`."""
+    return read_resume(Path(pdf_path))
+
+
 def find_resume(input_dir: Path | None = None) -> Path | None:
-    """Newest PDF in input/. Nothing clever -- the folder holds one file."""
+    """Newest supported resume in input/, whatever its format.
+
+    Globbed `*.pdf` only, so a .docx sitting in the folder was silently
+    ignored and the tool reported "no resume PDF found in input/" for a
+    directory that plainly contained a resume.
+    """
+    from jobbuddy.user_input import SUPPORTED_SUFFIXES
+
     input_dir = input_dir or (REPO_DIR / "input")
     if not input_dir.is_dir():
         return None
-    pdfs = sorted(input_dir.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return pdfs[0] if pdfs else None
+    found = [p for p in input_dir.iterdir()
+             if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES]
+    found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return found[0] if found else None
 
 
 def extract_facts(resume_text: str,

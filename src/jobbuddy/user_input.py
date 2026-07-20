@@ -102,6 +102,43 @@ def _now_iso() -> str:
 # Resume reading
 # --------------------------------------------------------------------------
 
+
+def _docx_blocks(document) -> list[str]:
+    """Every text block in a DOCX, in the order a reader would meet them.
+
+    `document.paragraphs` skips anything inside a table, and resume templates
+    put the whole document in one. So this walks the body's XML children and
+    handles both paragraph and table elements, keeping document order -- a
+    resume whose left column is contact details and right column is experience
+    reads correctly only if the cells come out in order.
+
+    Nested tables are handled by recursing into the cell, because a table
+    inside a table cell is the same problem one level down.
+    """
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    body = document.element.body
+    blocks: list[str] = []
+
+    def walk(parent, element) -> None:
+        tag = element.tag.split("}")[-1]
+        if tag == "p":
+            text = Paragraph(element, parent).text.strip()
+            if text:
+                blocks.append(text)
+        elif tag == "tbl":
+            table = Table(element, parent)
+            for row in table.rows:
+                for cell in row.cells:
+                    for child in cell._element.iterchildren():
+                        walk(cell, child)
+
+    for child in body.iterchildren():
+        walk(document, child)
+    return blocks
+
+
 def read_resume_text(path: str | Path) -> tuple[str, str]:
     """Extract text from a resume. Returns (text, how).
 
@@ -226,12 +263,28 @@ def read_resume_text(path: str | Path) -> tuple[str, str]:
             return "", (f"could not open DOCX: unexpected "
                         f"{type(exc).__name__}: {exc}")
 
+        # Walk the BODY in document order, not `document.paragraphs`.
+        #
+        # `document.paragraphs` returns only top-level paragraphs, so a resume
+        # laid out inside a table -- an extremely common template choice --
+        # extracts to nothing at all. A real one submitted for testing had 64
+        # non-empty table cells and zero paragraphs, and this returned
+        # ("", "python-docx"): empty text wearing a success-shaped reason,
+        # which is precisely the silent failure this module exists to avoid.
         try:
-            paragraphs = [p.text for p in document.paragraphs]
+            blocks = _docx_blocks(document)
         except Exception as exc:
-            return "", (f"could not read the paragraphs of this DOCX: "
+            return "", (f"could not read the body of this DOCX: "
                         f"{type(exc).__name__}: {exc}")
-        return "\n".join(paragraphs).strip(), "python-docx"
+
+        text = "\n".join(blocks).strip()
+        if not text:
+            # Say so, rather than handing back "" with a reason that names the
+            # library and implies it worked.
+            return "", ("python-docx opened the file but found no text -- it "
+                        "may be a scan, or the content may sit in text boxes "
+                        "or shapes, which python-docx cannot reach")
+        return text, f"python-docx ({len(blocks)} block(s))"
 
     # .txt / .md. `UnicodeDecodeError` is caught alongside OSError because it is
     # not an OSError -- a CV saved as UTF-16 or Latin-1 raised straight out of

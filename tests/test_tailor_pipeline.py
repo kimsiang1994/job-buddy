@@ -456,3 +456,57 @@ class OneRunWritesOneDirectory(unittest.TestCase):
             [], {}, "scope-x", stamp="20260719T133510Z",
             output_dir=Path(tempfile.mkdtemp()))
         self.assertIn("20260719T133510Z", str(run.root))
+
+
+class EveryArtefactOfOneRunSharesOneRoot(unittest.TestCase):
+    """The outcome test the mechanism test missed.
+
+    `OneRunWritesOneDirectory` asserts run_scopes passes its run_id to
+    tailor_jobs -- the mechanism. It stayed green while a candidate segment was
+    added to `paths.run_root` and to the tailoring stage but NOT to
+    `write_outputs`, so ranked.csv landed in one tree and fifteen tailored
+    resumes in another. Same bug as the earlier local-time/UTC split, second
+    cause, and a mechanism test cannot see either.
+
+    This asserts what actually matters: everything a run writes shares a
+    parent, whoever the candidate is.
+    """
+
+    def _run(self, profile):
+        tmp = tempfile.mkdtemp()
+        out = Path(tmp) / "out"
+        history = job_store.JobHistory.load(
+            path=Path(tmp) / "s.jsonl", snapshot_path=Path(tmp) / "st.json")
+        result = pipeline.run_scopes(
+            [SCOPE], scoring.load_config(), history=history,
+            fetch_jobs=_fake_fetch([_job("a"), _job("b", "B")]),
+            output_dir=out,
+            tailor_options={"profile": profile, "top": 1,
+                            "chat": stub_chat(CLEAN_SELECTION),
+                            "max_cost_usd": 10.0})
+        return out, result
+
+    def test_ranked_output_and_tailored_output_share_a_directory(self):
+        out, result = self._run(dict(PROFILE, identity={"name": "Alex Tan"}))
+        ranked = list(out.rglob("ranked.*"))
+        self.assertTrue(ranked, "no ranked artefact written")
+        for path in ranked:
+            with self.subTest(artefact=path.name):
+                self.assertEqual(
+                    path.parent, result.tailoring.root,
+                    f"{path.name} landed in {path.parent}, tailored output in "
+                    f"{result.tailoring.root} -- one run, two directories")
+
+    def test_the_named_candidate_appears_in_that_shared_root(self):
+        out, result = self._run(dict(PROFILE, identity={"name": "Alex Tan"}))
+        self.assertIn("Alex Tan", str(result.tailoring.root))
+        for path in out.rglob("ranked.*"):
+            self.assertIn("Alex Tan", str(path))
+
+    def test_an_anonymous_profile_still_shares_one_root(self):
+        """The no-candidate path must not diverge either."""
+        out, result = self._run(dict(PROFILE, identity={}))
+        ranked = list(out.rglob("ranked.*"))
+        self.assertTrue(ranked)
+        for path in ranked:
+            self.assertEqual(path.parent, result.tailoring.root)

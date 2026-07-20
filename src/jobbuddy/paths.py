@@ -171,18 +171,33 @@ def job_component(job_label: str, parent: Path,
     return candidate
 
 
-def run_root(scope: str, stamp: str, base: Path | None = None) -> Path:
-    """`<base>/<scope>/<stamp>`. The part that is never truncated."""
+def run_root(scope: str, stamp: str, base: Path | None = None,
+             candidate: str | None = None) -> Path:
+    """`<base>/<candidate>/<scope>/<stamp>`. The part that is never truncated.
+
+    The candidate segment exists because this tree held exactly one person's
+    output until a second resume arrived, at which point two people's tailored
+    resumes would have interleaved inside the same run directory with nothing
+    but the job name to tell them apart. Sending the wrong person's resume to
+    an employer is the kind of mistake a directory layout should make
+    impossible rather than merely unlikely.
+
+    Omitted when unknown, so existing single-candidate trees keep their shape
+    rather than sprouting an "unknown" level.
+    """
     root = Path(base) if base is not None else OUTPUT_DIR
+    if candidate:
+        root = root / sanitise_component(candidate, fallback="candidate")
     return (root / sanitise_component(scope, fallback="scope")
             / sanitise_component(stamp, fallback="run"))
 
 
 def job_dir(scope: str, stamp: str, job_label: str,
             base: Path | None = None,
-            taken: set[str] | None = None) -> Path:
+            taken: set[str] | None = None,
+            candidate: str | None = None) -> Path:
     """The full directory for one job's deliverables. Does not create it."""
-    parent = run_root(scope, stamp, base)
+    parent = run_root(scope, stamp, base, candidate)
     return parent / job_component(job_label, parent, taken)
 
 

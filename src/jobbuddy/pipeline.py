@@ -228,8 +228,14 @@ def run(
     output_dir: Path | None = None,
     history: job_store.JobHistory | None = None,
     fetch_jobs: Callable[..., tuple[list[dict], dict[str, int]]] | None = None,
+    candidate: str | None = None,
 ) -> RunResult:
     """Run one scope end to end.
+
+    `candidate` namespaces the output tree so two people's runs cannot share a
+    directory. It must reach `write_outputs` here as well as the tailoring
+    stage: adding it to only one of the two writers is what split a single run
+    across two directories.
 
     Ordering is not the caller's problem: `JobHistory.observe` owns the
     record-then-fold sequence, and velocity is captured from the prior log
@@ -271,7 +277,8 @@ def run(
 
     if jobs and write_artefacts and not dry_run:
         result.written = write_outputs(
-            jobs, scope.get("name", "run"), run_id, output_dir=output_dir
+            jobs, scope.get("name", "run"), run_id, output_dir=output_dir,
+            candidate=candidate,
         )
     return result
 
@@ -294,13 +301,19 @@ def run_scopes(
     anything `tailor_jobs` takes: `top`, `max_pages`, `max_cost_usd`,
     `strategy_names`, `chat`.
     """
+    options = dict(tailor_options or {})
+    profile = options.pop("profile", None) or {}
+    # Resolved BEFORE the search stage, because `write_outputs` runs in there
+    # and must land in the same directory as everything the tailoring stage
+    # writes afterwards.
+    candidate = str((profile.get("identity") or {}).get("name") or "").strip()
+    if candidate:
+        kwargs.setdefault("candidate", candidate)
+
     result = _search_scopes(scopes, config, **kwargs)
 
     if tailor_options is None or result.dry_run or not result.jobs:
         return result
-
-    options = dict(tailor_options)
-    profile = options.pop("profile", None) or {}
     scope_label = (str(scopes[0].get("name") or "run") if len(scopes) == 1
                    else "all-scopes")
     # Reuse the run's own id rather than minting a second timestamp. Left to
@@ -373,7 +386,8 @@ def _search_scopes(
     )
     if all_jobs and kwargs.get("write_artefacts", True) and not dry_run:
         result.written = write_outputs(
-            all_jobs, "all-scopes", run_id, output_dir=output_dir
+            all_jobs, "all-scopes", run_id, output_dir=output_dir,
+            candidate=kwargs.get("candidate")
         )
     return result
 
@@ -387,9 +401,17 @@ def write_outputs(
     scope_label: str,
     run_id: str,
     output_dir: Path | None = None,
+    candidate: str | None = None,
 ) -> list[Path]:
-    """Write ranked.csv and ranked.json. Returns the paths written."""
-    root = (output_dir or OUTPUT_DIR) / scope_label / run_id
+    """Write ranked.csv and ranked.json. Returns the paths written.
+
+    Uses `paths.run_root` rather than composing the path here. Building it by
+    hand is what split a single run across two directories TWICE: first when
+    this used the UTC run_id while `tailor_jobs` minted a local-time stamp, and
+    again when a candidate segment was added to `run_root` and this line did
+    not follow. One function owns the shape of the tree.
+    """
+    root = paths.run_root(scope_label, run_id, output_dir, candidate)
     written: list[Path] = []
 
     csv_path = root / "ranked.csv"
@@ -764,7 +786,11 @@ def tailor_jobs(jobs: list[dict[str, Any]],
     tests at no cost.
     """
     stamp = stamp or paths.timestamp()
-    root = paths.run_root(scope_label, stamp, output_dir)
+    # Namespaced by candidate, so two people's tailored resumes cannot share a
+    # run directory. Read from the profile that produced them, not from config,
+    # so the folder always names whoever the resumes are actually for.
+    candidate = str(((profile or {}).get("identity") or {}).get("name") or "").strip()
+    root = paths.run_root(scope_label, stamp, output_dir, candidate or None)
     outcome_run = TailorRun(root=root, max_cost_usd=float(max_cost_usd))
 
     selected = list(jobs or [])[:max(0, int(top))]

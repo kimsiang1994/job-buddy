@@ -183,3 +183,41 @@ class TheTreeShapeIsWhatWasAskedFor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TwoCandidatesNeverShareARunDirectory(unittest.TestCase):
+    """This tree held one person's output until a second resume arrived. Two
+    people's tailored resumes interleaving in one directory, told apart only by
+    job name, is how the wrong resume reaches an employer."""
+
+    def test_the_candidate_segment_separates_them(self):
+        base = Path(tempfile.mkdtemp())
+        a = paths.run_root("ai-engineer-sg", "20260720T115146Z", base, "Alex Tan")
+        b = paths.run_root("ai-engineer-sg", "20260720T115146Z", base, "Priya Ramanathan")
+        self.assertNotEqual(a, b)
+        self.assertIn("Alex Tan", str(a))
+
+    def test_the_same_candidate_is_stable(self):
+        base = Path(tempfile.mkdtemp())
+        self.assertEqual(
+            paths.run_root("s", "t", base, "Alex Tan"),
+            paths.run_root("s", "t", base, "Alex Tan"))
+
+    def test_an_absent_candidate_keeps_the_old_shape(self):
+        """A single-candidate tree must not sprout an 'unknown' level."""
+        base = Path(tempfile.mkdtemp())
+        self.assertEqual(paths.run_root("s", "t", base),
+                         paths.run_root("s", "t", base, None))
+        self.assertEqual(paths.run_root("s", "t", base, ""), base / "s" / "t")
+
+    def test_a_candidate_name_is_sanitised_like_any_component(self):
+        base = Path(tempfile.mkdtemp())
+        root = paths.run_root("s", "t", base, 'A/B:C*?"<>|')
+        self.assertTrue(root.is_relative_to(base))
+        for bad in '/\:*?"<>|':
+            self.assertNotIn(bad, root.relative_to(base).parts[0])
+
+    def test_job_dir_inherits_the_candidate(self):
+        base = Path(tempfile.mkdtemp())
+        d = paths.job_dir("s", "t", "ML Engineer", base, candidate="Alex Tan")
+        self.assertIn("Alex Tan", str(d))

@@ -236,6 +236,12 @@
       "token": "shield-1",
       "website": "https://shield.com/",
       "via": "company registry"
+    },
+    "first circle": {
+      "vendor": "workable",
+      "token": "first-circle",
+      "website": "http://firstcircle.com",
+      "via": "company registry"
     }
   }
 }
