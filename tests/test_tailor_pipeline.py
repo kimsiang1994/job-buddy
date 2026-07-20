@@ -435,3 +435,24 @@ class TheStageIsOffUnlessAskedFor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class OneRunWritesOneDirectory(unittest.TestCase):
+    """A single run wrote ranked.csv into 20260719T133510Z and every resume,
+    report and workbook into 2026-07-19_213859 -- two directories, hours apart
+    by name, for one run. `write_outputs` uses the UTC run_id and `tailor_jobs`
+    minted its own local-time stamp.
+    """
+
+    def test_tailoring_reuses_the_runs_own_id(self):
+        import inspect
+        source = inspect.getsource(pipeline.run_scopes)
+        self.assertIn('setdefault("stamp", result.run_id)', source,
+                      "run_scopes must pass its run_id to tailor_jobs, or the "
+                      "run's artefacts split across two directories")
+
+    def test_an_explicit_stamp_lands_in_the_path(self):
+        run = pipeline.tailor_jobs(
+            [], {}, "scope-x", stamp="20260719T133510Z",
+            output_dir=Path(tempfile.mkdtemp()))
+        self.assertIn("20260719T133510Z", str(run.root))

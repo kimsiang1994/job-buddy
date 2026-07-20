@@ -24,6 +24,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -302,6 +303,13 @@ def run_scopes(
     profile = options.pop("profile", None) or {}
     scope_label = (str(scopes[0].get("name") or "run") if len(scopes) == 1
                    else "all-scopes")
+    # Reuse the run's own id rather than minting a second timestamp. Left to
+    # itself `tailor_jobs` calls `paths.timestamp()`, which formats local time
+    # as 2026-07-19_213859 while `write_outputs` uses the UTC run_id
+    # 20260719T133510Z -- so a single run wrote ranked.csv into one directory
+    # and every resume, report and workbook into another, hours apart by name.
+    # One run, one directory.
+    options.setdefault("stamp", result.run_id)
     result.tailoring = tailor_jobs(
         result.jobs, profile, scope_label,
         output_dir=kwargs.get("output_dir"), **options)
@@ -512,6 +520,11 @@ class TailorOutcome:
     company: str
     status: str
     reason: str = ""
+    # The traceback, when something raised. `reason` names the exception but
+    # not where it came from, and an intermittent failure cannot be reproduced
+    # on demand to recover the rest. Kept off `reason` so the workbook column
+    # stays readable.
+    detail: str = ""
     cost_usd: float = 0.0
     directory: Path | None = None
     written: list[Path] = field(default_factory=list)
@@ -600,7 +613,12 @@ def _prepare_job(job: dict[str, Any], profile: dict[str, Any],
             profile, job, _requirements_for(job), chat=chat,
             max_bullets=max_bullets, strategy_names=strategy_names)
     except Exception as exc:  # one job's model call must not lose the others
-        return {"stage": "tailor", "error": f"{type(exc).__name__}: {exc}"}
+        # Keep the traceback. Isolation without it produces reports like
+        # "AttributeError: 'NoneType' object has no attribute 'get'" with no
+        # file and no line, which is barely more useful than silence -- and an
+        # intermittent failure cannot be reproduced on demand to recover it.
+        return {"stage": "tailor", "error": f"{type(exc).__name__}: {exc}",
+                "traceback": traceback.format_exc()}
 
     raw_cost = tailored.get("cost_usd")
     cost = float(raw_cost) if isinstance(raw_cost, (int, float)) else 0.0
@@ -777,6 +795,7 @@ def tailor_jobs(jobs: list[dict[str, Any]],
                     company=str(job.get("company") or ""),
                     status=f"FAILED_AT_{prepared.get('stage') or 'unknown'}",
                     reason=str(prepared.get("error") or ""),
+                    detail=str(prepared.get("traceback") or ""),
                     cost_usd=float(prepared.get("cost_usd") or 0.0),
                 ))
                 continue

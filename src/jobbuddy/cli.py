@@ -125,6 +125,14 @@ def print_tailoring(run: pipeline.TailorRun) -> None:
         if outcome.page_one and outcome.page_one.get("missing"):
             for missing in outcome.page_one["missing"]:
                 print(f"      not on page 1: {missing}")
+        # The traceback, for failures only. Capturing it and then not showing
+        # it is how an intermittent bug survives a debugging session: the run
+        # that reproduced it prints "AttributeError: 'NoneType' object has no
+        # attribute 'get'" with no file and no line, and reproducing it again
+        # on demand is exactly what cannot be relied on.
+        if outcome.detail:
+            for line in outcome.detail.rstrip().splitlines()[-6:]:
+                print(f"      {line}")
     if run.workbook:
         print(f"\nwrote {run.workbook}")
 
