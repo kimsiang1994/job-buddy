@@ -15,6 +15,7 @@ this module usable with zero dependencies.
 import json
 import os
 import sys
+import threading
 
 from jobbuddy.deepseek import model_config
 
@@ -37,6 +38,8 @@ FALLBACK_CONTEXT = 65536
 _warned = set()
 _backend = {"loaded": False, "encode": None, "name": "heuristic"}
 _profiles_cache = {"loaded": False, "data": None}
+# Serialises the lazy load. See load_profiles() for the race it closes.
+_profiles_lock = threading.Lock()
 
 
 def _warn(message):
@@ -123,17 +126,48 @@ def estimate_messages(messages):
 # --------------------------------------------------------------------------
 
 def load_profiles():
+    """The task profiles, read once. Safe to call from several threads.
+
+    The lock and the ordering below are both load-bearing, and their absence
+    was a real bug that took a long time to find. The previous version set
+    `loaded = True` BEFORE the file read that populates `data`:
+
+        if _profiles_cache["loaded"]:
+            return _profiles_cache["data"]   # None, for a moment
+        _profiles_cache["loaded"] = True     # set too early
+        ... read the file ...
+        _profiles_cache["data"] = data
+
+    So a second thread arriving inside that window saw `loaded` true and got
+    `None` back, and every caller then died on `profiles.get(...)`. It presented
+    as an intermittent `AttributeError: 'NoneType' object has no attribute
+    'get'` that never reproduced on a single job, was blamed first on thread
+    safety in the wrong module and then on a transient API response, and only
+    resolved once the traceback was captured instead of just the message.
+
+    `loaded` is now set last, and the whole thing is serialised, so a caller
+    either waits or gets real data. Never a half-built cache.
+    """
     if _profiles_cache["loaded"]:
         return _profiles_cache["data"]
-    _profiles_cache["loaded"] = True
-    try:
-        with open(PROFILES_PATH, "r", encoding="utf-8-sig") as fh:
-            data = json.load(fh)
-        _profiles_cache["data"] = data.get("profiles") or {}
-    except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError) as err:
-        _warn(f"task_profiles.json unusable ({err}) - using built-in defaults")
-        _profiles_cache["data"] = {}
-    return _profiles_cache["data"]
+
+    with _profiles_lock:
+        # Re-check inside the lock: another thread may have finished while
+        # this one waited, and re-reading the file would be harmless but
+        # pointless.
+        if _profiles_cache["loaded"]:
+            return _profiles_cache["data"]
+        try:
+            with open(PROFILES_PATH, "r", encoding="utf-8-sig") as fh:
+                data = json.load(fh)
+            loaded = data.get("profiles") or {}
+        except (FileNotFoundError, json.JSONDecodeError, OSError, AttributeError) as err:
+            _warn(f"task_profiles.json unusable ({err}) - using built-in defaults")
+            loaded = {}
+        _profiles_cache["data"] = loaded
+        # Last, so no other thread can observe the flag without the data.
+        _profiles_cache["loaded"] = True
+        return _profiles_cache["data"]
 
 
 def reload():
